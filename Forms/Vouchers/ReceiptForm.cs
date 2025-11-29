@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Data.SQLite;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
 
@@ -10,8 +11,8 @@ namespace BillingSoftware.Forms.Vouchers
     {
         private VoucherManager voucherManager;
         private TextBox voucherNumberTxt, receivedFromTxt, amountTxt, descriptionTxt;
+        private ComboBox paymentModeCombo, referenceVoucherCombo;
         private DateTimePicker datePicker;
-        private ComboBox paymentModeCombo;
         private Button saveBtn, clearBtn;
 
         public ReceiptForm()
@@ -19,12 +20,13 @@ namespace BillingSoftware.Forms.Vouchers
             InitializeComponent();
             voucherManager = new VoucherManager();
             CreateReceiptFormUI();
+            LoadReferenceVouchers();
         }
 
         private void CreateReceiptFormUI()
         {
             this.Text = "Receipt Voucher";
-            this.Size = new Size(500, 450);
+            this.Size = new Size(500, 500);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(248, 249, 250);
 
@@ -42,7 +44,7 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Text = "Receipt Details";
             mainGroup.Font = new Font("Segoe UI", 10);
             mainGroup.Location = new Point(20, 70);
-            mainGroup.Size = new Size(450, 300);
+            mainGroup.Size = new Size(450, 350);
             mainGroup.BackColor = Color.White;
 
             // Voucher Number
@@ -63,33 +65,41 @@ namespace BillingSoftware.Forms.Vouchers
             CreateLabel("Received From:", 20, 120, mainGroup);
             receivedFromTxt = CreateTextBox(150, 120, 250, mainGroup);
 
+            // Reference Voucher (Sales)
+            CreateLabel("Against Sales:", 20, 160, mainGroup);
+            referenceVoucherCombo = new ComboBox();
+            referenceVoucherCombo.Location = new Point(150, 160);
+            referenceVoucherCombo.Size = new Size(250, 25);
+            referenceVoucherCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            mainGroup.Controls.Add(referenceVoucherCombo);
+
             // Amount
-            CreateLabel("Amount:", 20, 160, mainGroup);
-            amountTxt = CreateTextBox(150, 160, 150, mainGroup);
+            CreateLabel("Amount:", 20, 200, mainGroup);
+            amountTxt = CreateTextBox(150, 200, 150, mainGroup);
             amountTxt.KeyPress += AmountTxt_KeyPress;
 
             // Payment Mode
-            CreateLabel("Payment Mode:", 20, 200, mainGroup);
+            CreateLabel("Payment Mode:", 20, 240, mainGroup);
             paymentModeCombo = new ComboBox();
-            paymentModeCombo.Location = new Point(150, 200);
+            paymentModeCombo.Location = new Point(150, 240);
             paymentModeCombo.Size = new Size(150, 25);
             paymentModeCombo.Items.AddRange(new string[] { "Cash", "Bank Transfer", "Cheque", "Card", "UPI" });
             paymentModeCombo.SelectedIndex = 0;
             mainGroup.Controls.Add(paymentModeCombo);
 
             // Description
-            CreateLabel("Description:", 20, 240, mainGroup);
-            descriptionTxt = CreateTextBox(150, 240, 250, mainGroup);
+            CreateLabel("Description:", 20, 280, mainGroup);
+            descriptionTxt = CreateTextBox(150, 280, 250, mainGroup);
             descriptionTxt.Multiline = true;
             descriptionTxt.Height = 40;
 
             this.Controls.Add(mainGroup);
 
             // Buttons
-            saveBtn = CreateButton("Save Receipt", Color.FromArgb(46, 204, 113), new Point(20, 390));
+            saveBtn = CreateButton("Save Receipt", Color.FromArgb(46, 204, 113), new Point(20, 440));
             saveBtn.Click += SaveBtn_Click;
 
-            clearBtn = CreateButton("Clear", Color.FromArgb(149, 165, 166), new Point(150, 390));
+            clearBtn = CreateButton("Clear", Color.FromArgb(149, 165, 166), new Point(150, 440));
             clearBtn.Click += ClearBtn_Click;
 
             this.Controls.Add(saveBtn);
@@ -131,6 +141,19 @@ namespace BillingSoftware.Forms.Vouchers
             return btn;
         }
 
+        private void LoadReferenceVouchers()
+        {
+            var salesVouchers = voucherManager.GetSalesVouchersForReference();
+            referenceVoucherCombo.Items.Add("-- Select Sales Voucher --");
+            
+            foreach (var voucher in salesVouchers)
+            {
+                referenceVoucherCombo.Items.Add($"{voucher.Number} - {voucher.Party} - ₹{voucher.Amount:N2}");
+            }
+            
+            referenceVoucherCombo.SelectedIndex = 0;
+        }
+
         private void AmountTxt_KeyPress(object sender, KeyPressEventArgs e)
         {
             if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
@@ -155,6 +178,14 @@ namespace BillingSoftware.Forms.Vouchers
                 return;
             }
 
+            // Get reference voucher number
+            string referenceVoucher = "";
+            if (referenceVoucherCombo.SelectedIndex > 0)
+            {
+                var selectedText = referenceVoucherCombo.SelectedItem.ToString();
+                referenceVoucher = selectedText.Split(' ')[0]; // Extract voucher number
+            }
+
             var receiptVoucher = new Voucher
             {
                 Type = "Receipt",
@@ -163,7 +194,8 @@ namespace BillingSoftware.Forms.Vouchers
                 Party = receivedFromTxt.Text.Trim(),
                 Amount = amount,
                 Description = $"Payment Mode: {paymentModeCombo.SelectedItem}. {descriptionTxt.Text}",
-                Status = "Active"
+                Status = "Active",
+                ReferenceVoucher = referenceVoucher
             };
 
             if (voucherManager.AddVoucher(receiptVoucher))
@@ -191,6 +223,7 @@ namespace BillingSoftware.Forms.Vouchers
             amountTxt.Clear();
             descriptionTxt.Clear();
             paymentModeCombo.SelectedIndex = 0;
+            referenceVoucherCombo.SelectedIndex = 0;
             datePicker.Value = DateTime.Now;
         }
 

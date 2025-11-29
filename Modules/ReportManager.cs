@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.SQLite;
 using System.Linq;
 using BillingSoftware.Models;
 
@@ -18,10 +19,14 @@ namespace BillingSoftware.Modules
 
         public int GetLowStockCount()
         {
-            return 2; // Sample data
+            string sql = "SELECT COUNT(*) FROM products WHERE stock <= min_stock AND stock > 0";
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            {
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
         }
 
-        // Daily Stock Report
+        // Daily Stock Report - REAL DATA
         public Report GenerateDailyStockReport(DateTime date)
         {
             var report = new Report
@@ -33,27 +38,48 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var stockData = GetSampleStockMovementData(date);
+            // REAL DATABASE QUERY - Stock movements for the day
+            string sql = @"SELECT p.name, p.code, p.stock, p.unit, p.price, 
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'PURCHASE' THEN st.quantity ELSE 0 END), 0) as purchased,
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'SALE' THEN st.quantity ELSE 0 END), 0) as sold
+                           FROM products p
+                           LEFT JOIN stock_transactions st ON p.name = st.product_name AND st.transaction_date = @date
+                           GROUP BY p.name, p.code, p.stock, p.unit, p.price
+                           ORDER BY p.name";
 
-            foreach (var item in stockData)
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                var reportItem = new ReportItem
-                {
-                    Description = item.ItemName,
-                    Quantity = item.OpeningStock,
-                    Amount = item.Bought,
-                    Date = date,
-                    Reference = $"Sold: {item.Sold} | Closing: {item.ClosingStock}"
-                };
+                cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
 
-                report.Items.Add(reportItem);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var stock = Convert.ToDecimal(reader["stock"]);
+                        var purchased = Convert.ToDecimal(reader["purchased"]);
+                        var sold = Convert.ToDecimal(reader["sold"]);
+                        var openingStock = stock - purchased + sold;
+
+                        var reportItem = new ReportItem
+                        {
+                            Description = reader["name"].ToString(),
+                            Quantity = openingStock,
+                            Amount = purchased,
+                            Date = date,
+                            Reference = $"Code: {reader["code"]} | Sold: {sold} | Closing: {stock} | Unit: {reader["unit"]}"
+                        };
+
+                        report.Items.Add(reportItem);
+                        report.TotalAmount += stock * Convert.ToDecimal(reader["price"]);
+                    }
+                }
             }
 
             report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Monthly Stock Report
+        // Monthly Stock Report - REAL DATA
         public Report GenerateMonthlyStockReport(int year, int month)
         {
             var fromDate = new DateTime(year, month, 1);
@@ -68,27 +94,49 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var monthlyData = GetSampleMonthlyStockData(year, month);
+            // REAL DATABASE QUERY - Monthly stock summary
+            string sql = @"SELECT p.name, p.code, p.unit, p.price, p.stock as closing_stock,
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'PURCHASE' THEN st.quantity ELSE 0 END), 0) as monthly_purchased,
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'SALE' THEN st.quantity ELSE 0 END), 0) as monthly_sold
+                           FROM products p
+                           LEFT JOIN stock_transactions st ON p.name = st.product_name 
+                           WHERE strftime('%Y-%m', st.transaction_date) = @yearMonth OR st.transaction_date IS NULL
+                           GROUP BY p.name, p.code, p.unit, p.price, p.stock
+                           ORDER BY p.name";
 
-            foreach (var item in monthlyData)
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                var reportItem = new ReportItem
-                {
-                    Description = item.ItemName,
-                    Quantity = item.OpeningStock,
-                    Amount = item.Bought,
-                    Date = fromDate,
-                    Reference = $"Sold: {item.Sold} | Closing: {item.ClosingStock}"
-                };
+                cmd.Parameters.AddWithValue("@yearMonth", $"{year}-{month:00}");
 
-                report.Items.Add(reportItem);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var monthlyPurchased = Convert.ToDecimal(reader["monthly_purchased"]);
+                        var monthlySold = Convert.ToDecimal(reader["monthly_sold"]);
+                        var closingStock = Convert.ToDecimal(reader["closing_stock"]);
+                        var openingStock = closingStock - monthlyPurchased + monthlySold;
+
+                        var reportItem = new ReportItem
+                        {
+                            Description = reader["name"].ToString(),
+                            Quantity = openingStock,
+                            Amount = monthlyPurchased,
+                            Date = fromDate,
+                            Reference = $"Purchased: {monthlyPurchased} | Sold: {monthlySold} | Closing: {closingStock}"
+                        };
+
+                        report.Items.Add(reportItem);
+                        report.TotalAmount += closingStock * Convert.ToDecimal(reader["price"]);
+                    }
+                }
             }
 
             report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Yearly Stock Summary
+        // Yearly Stock Summary - REAL DATA
         public Report GenerateYearlyStockReport(int year)
         {
             var report = new Report
@@ -100,27 +148,49 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var yearlyData = GetSampleYearlyStockData(year);
+            // REAL DATABASE QUERY - Yearly stock summary
+            string sql = @"SELECT p.name, p.code, p.unit, p.price, p.stock as closing_stock,
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'PURCHASE' THEN st.quantity ELSE 0 END), 0) as yearly_purchased,
+                                  COALESCE(SUM(CASE WHEN st.transaction_type = 'SALE' THEN st.quantity ELSE 0 END), 0) as yearly_sold
+                           FROM products p
+                           LEFT JOIN stock_transactions st ON p.name = st.product_name 
+                           WHERE strftime('%Y', st.transaction_date) = @year OR st.transaction_date IS NULL
+                           GROUP BY p.name, p.code, p.unit, p.price, p.stock
+                           ORDER BY p.name";
 
-            foreach (var item in yearlyData)
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                var reportItem = new ReportItem
-                {
-                    Description = item.ItemName,
-                    Quantity = item.OpeningStock,
-                    Amount = item.Bought,
-                    Date = new DateTime(year, 1, 1),
-                    Reference = $"Sold: {item.Sold} | Closing: {item.ClosingStock}"
-                };
+                cmd.Parameters.AddWithValue("@year", year.ToString());
 
-                report.Items.Add(reportItem);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var yearlyPurchased = Convert.ToDecimal(reader["yearly_purchased"]);
+                        var yearlySold = Convert.ToDecimal(reader["yearly_sold"]);
+                        var closingStock = Convert.ToDecimal(reader["closing_stock"]);
+                        var openingStock = closingStock - yearlyPurchased + yearlySold;
+
+                        var reportItem = new ReportItem
+                        {
+                            Description = reader["name"].ToString(),
+                            Quantity = openingStock,
+                            Amount = yearlyPurchased,
+                            Date = new DateTime(year, 1, 1),
+                            Reference = $"Purchased: {yearlyPurchased} | Sold: {yearlySold} | Closing: {closingStock}"
+                        };
+
+                        report.Items.Add(reportItem);
+                        report.TotalAmount += closingStock * Convert.ToDecimal(reader["price"]);
+                    }
+                }
             }
 
             report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Sales Report
+        // Sales Report - REAL DATA
         public Report GenerateSalesReport(DateTime fromDate, DateTime toDate)
         {
             var report = new Report
@@ -132,33 +202,41 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var sampleSales = new List<Voucher>
-            {
-                new Voucher { Type = "Sales", Number = "SL-001", Date = DateTime.Now.AddDays(-5), Party = "Customer A", Amount = 15000, Description = "Laptop Sale" },
-                new Voucher { Type = "Sales", Number = "SL-002", Date = DateTime.Now.AddDays(-3), Party = "Customer B", Amount = 25000, Description = "Monitor + Accessories" },
-                new Voucher { Type = "Sales", Number = "SL-003", Date = DateTime.Now.AddDays(-1), Party = "Customer C", Amount = 8000, Description = "Keyboard & Mouse" },
-                new Voucher { Type = "Sales", Number = "SL-004", Date = DateTime.Now, Party = "Customer D", Amount = 50000, Description = "Bulk Order - 2 Laptops" }
-            };
+            // REAL DATABASE QUERY - Sales vouchers
+            string sql = @"SELECT * FROM vouchers 
+                           WHERE type = 'Sales' 
+                           AND date BETWEEN @fromDate AND @toDate 
+                           AND status = 'Active'
+                           ORDER BY date DESC";
 
-            foreach (var sale in sampleSales.Where(s => s.Date >= fromDate && s.Date <= toDate))
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                var item = new ReportItem
+                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
+
+                using (var reader = cmd.ExecuteReader())
                 {
-                    Description = sale.Description,
-                    Amount = sale.Amount,
-                    Date = sale.Date,
-                    Reference = sale.Number
-                };
+                    while (reader.Read())
+                    {
+                        var item = new ReportItem
+                        {
+                            Description = reader["description"].ToString(),
+                            Amount = Convert.ToDecimal(reader["amount"]),
+                            Date = DateTime.Parse(reader["date"].ToString()),
+                            Reference = $"{reader["number"]} - {reader["party"]}"
+                        };
 
-                report.Items.Add(item);
-                report.TotalAmount += sale.Amount;
+                        report.Items.Add(item);
+                        report.TotalAmount += item.Amount;
+                    }
+                }
             }
 
             report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Financial Report
+        // Financial Report - REAL DATA
         public Report GenerateFinancialReport(DateTime fromDate, DateTime toDate)
         {
             var report = new Report
@@ -170,34 +248,41 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var sampleTransactions = new List<Voucher>
-            {
-                new Voucher { Type = "Sales", Number = "SL-001", Date = DateTime.Now.AddDays(-10), Party = "Customer A", Amount = 15000 },
-                new Voucher { Type = "Sales", Number = "SL-002", Date = DateTime.Now.AddDays(-5), Party = "Customer B", Amount = 25000 },
-                new Voucher { Type = "Receipt", Number = "RCPT-001", Date = DateTime.Now.AddDays(-3), Party = "Customer C", Amount = 10000 },
-                new Voucher { Type = "Payment", Number = "PAY-001", Date = DateTime.Now.AddDays(-2), Party = "Supplier X", Amount = 8000 },
-                new Voucher { Type = "Payment", Number = "PAY-002", Date = DateTime.Now.AddDays(-1), Party = "Supplier Y", Amount = 5000 }
-            };
+            // REAL DATABASE QUERY - All financial transactions
+            string sql = @"SELECT type, number, date, party, amount, description 
+                           FROM vouchers 
+                           WHERE date BETWEEN @fromDate AND @toDate 
+                           AND status = 'Active'
+                           ORDER BY date, type";
 
-            foreach (var transaction in sampleTransactions.Where(t => t.Date >= fromDate && t.Date <= toDate))
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                var item = new ReportItem
+                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
+
+                using (var reader = cmd.ExecuteReader())
                 {
-                    Description = $"{transaction.Type} - {transaction.Party}",
-                    Amount = transaction.Amount,
-                    Date = transaction.Date,
-                    Reference = transaction.Number
-                };
+                    while (reader.Read())
+                    {
+                        var item = new ReportItem
+                        {
+                            Description = $"{reader["type"]} - {reader["party"]}",
+                            Amount = Convert.ToDecimal(reader["amount"]),
+                            Date = DateTime.Parse(reader["date"].ToString()),
+                            Reference = reader["number"].ToString()
+                        };
 
-                report.Items.Add(item);
-                report.TotalAmount += transaction.Amount;
+                        report.Items.Add(item);
+                        report.TotalAmount += item.Amount;
+                    }
+                }
             }
 
             report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Voucher Summary Report
+        // Voucher Summary Report - REAL DATA
         public Report GenerateVoucherSummary(DateTime fromDate, DateTime toDate)
         {
             var report = new Report
@@ -209,152 +294,145 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            var sampleVouchers = new List<Voucher>
+            // REAL DATABASE QUERY - Voucher summary by type
+            string sql = @"SELECT type, COUNT(*) as count, SUM(amount) as total_amount
+                           FROM vouchers 
+                           WHERE date BETWEEN @fromDate AND @toDate 
+                           AND status = 'Active'
+                           GROUP BY type
+                           ORDER BY type";
+
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
-                new Voucher { Type = "Sales", Number = "SL-001", Date = DateTime.Now.AddDays(-5), Party = "Customer A", Amount = 15000 },
-                new Voucher { Type = "Sales", Number = "SL-002", Date = DateTime.Now.AddDays(-3), Party = "Customer B", Amount = 25000 },
-                new Voucher { Type = "Receipt", Number = "RCPT-001", Date = DateTime.Now.AddDays(-2), Party = "Customer C", Amount = 10000 },
-                new Voucher { Type = "Payment", Number = "PAY-001", Date = DateTime.Now.AddDays(-1), Party = "Supplier X", Amount = 8000 }
-            };
+                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
 
-            var voucherSummary = sampleVouchers
-                .Where(v => v.Date >= fromDate && v.Date <= toDate)
-                .GroupBy(v => v.Type)
-                .Select(g => new ReportItem
+                using (var reader = cmd.ExecuteReader())
                 {
-                    Description = $"{g.Key} Vouchers",
-                    Quantity = g.Count(),
-                    Amount = g.Sum(v => v.Amount),
-                    Reference = $"{g.Count()} transactions"
-                })
-                .ToList();
+                    while (reader.Read())
+                    {
+                        var item = new ReportItem
+                        {
+                            Description = $"{reader["type"]} Vouchers",
+                            Quantity = Convert.ToInt32(reader["count"]),
+                            Amount = Convert.ToDecimal(reader["total_amount"]),
+                            Reference = $"{reader["count"]} transactions"
+                        };
 
-            report.Items.AddRange(voucherSummary);
-            report.TotalAmount = voucherSummary.Sum(item => item.Amount);
-            report.TotalRecords = voucherSummary.Count;
+                        report.Items.Add(item);
+                        report.TotalAmount += item.Amount;
+                    }
+                }
+            }
 
+            report.TotalRecords = report.Items.Count;
             return report;
         }
 
-        // Stock Report (Generic - for backward compatibility)
+        // Stock Report (Generic) - REAL DATA
         public Report GenerateStockReport(string reportType)
         {
-            return GenerateDailyStockReport(DateTime.Now);
+            var report = new Report
+            {
+                Type = "Stock",
+                Title = $"Current Stock Report - {DateTime.Now:dd-MMM-yyyy}",
+                GeneratedDate = DateTime.Now
+            };
+
+            // REAL DATABASE QUERY - Current stock
+            string sql = "SELECT * FROM products ORDER BY name";
+            
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var stock = Convert.ToDecimal(reader["stock"]);
+                    var price = Convert.ToDecimal(reader["price"]);
+                    var minStock = Convert.ToDecimal(reader["min_stock"]);
+                    
+                    var item = new ReportItem
+                    {
+                        Description = reader["name"].ToString(),
+                        Quantity = stock,
+                        Amount = stock * price,
+                        Reference = $"Code: {reader["code"]} | Min Stock: {minStock} | Unit: {reader["unit"]}"
+                    };
+
+                    report.Items.Add(item);
+                    report.TotalAmount += item.Amount;
+                }
+            }
+
+            report.TotalRecords = report.Items.Count;
+            return report;
         }
 
+        // Low Stock Products - REAL DATA
         public List<Product> GetLowStockProducts()
         {
-            return new List<Product>
+            var lowStockProducts = new List<Product>();
+            
+            // REAL DATABASE QUERY - Low stock items
+            string sql = "SELECT * FROM products WHERE stock <= min_stock ORDER BY stock ASC";
+            
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            using (var reader = cmd.ExecuteReader())
             {
-                new Product { Name = "Wireless Mouse", Code = "MS002", Price = 800, Stock = 5, MinStock = 10, Unit = "PCS" },
-                new Product { Name = "USB Cable", Code = "UC001", Price = 200, Stock = 2, MinStock = 20, Unit = "PCS" }
-            };
+                while (reader.Read())
+                {
+                    lowStockProducts.Add(new Product
+                    {
+                        Id = Convert.ToInt32(reader["id"]),
+                        Name = reader["name"].ToString(),
+                        Code = reader["code"].ToString(),
+                        Price = Convert.ToDecimal(reader["price"]),
+                        Stock = Convert.ToDecimal(reader["stock"]),
+                        MinStock = Convert.ToDecimal(reader["min_stock"]),
+                        Unit = reader["unit"].ToString()
+                    });
+                }
+            }
+            
+            return lowStockProducts;
         }
 
-        // Sample data methods
-        private List<StockMovement> GetSampleStockMovementData(DateTime date)
+        // Stock Valuation Report - REAL DATA
+        public Report GenerateStockValuationReport()
         {
-            return new List<StockMovement>
+            var report = new Report
             {
-                new StockMovement { 
-                    ItemName = "Laptop", 
-                    ItemCode = "LP001",
-                    OpeningStock = 25, 
-                    Bought = 10, 
-                    Sold = 8, 
-                    ClosingStock = 27,
-                    Unit = "PCS",
-                    Date = date
-                },
-                new StockMovement { 
-                    ItemName = "Wireless Mouse", 
-                    ItemCode = "MS002",
-                    OpeningStock = 45, 
-                    Bought = 50, 
-                    Sold = 35, 
-                    ClosingStock = 60,
-                    Unit = "PCS",
-                    Date = date
-                },
-                new StockMovement { 
-                    ItemName = "Keyboard", 
-                    ItemCode = "KB001",
-                    OpeningStock = 30, 
-                    Bought = 25, 
-                    Sold = 20, 
-                    ClosingStock = 35,
-                    Unit = "PCS",
-                    Date = date
-                }
+                Type = "Stock Valuation",
+                Title = $"Stock Valuation Report - {DateTime.Now:dd-MMM-yyyy}",
+                GeneratedDate = DateTime.Now
             };
-        }
 
-        private List<StockMovement> GetSampleMonthlyStockData(int year, int month)
-        {
-            return new List<StockMovement>
+            // REAL DATABASE QUERY - Stock valuation
+            string sql = @"SELECT name, code, stock, unit, price, (stock * price) as total_value
+                           FROM products 
+                           WHERE stock > 0
+                           ORDER BY total_value DESC";
+            
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            using (var reader = cmd.ExecuteReader())
             {
-                new StockMovement { 
-                    ItemName = "Laptop", 
-                    ItemCode = "LP001",
-                    OpeningStock = 20, 
-                    Bought = 35, 
-                    Sold = 28, 
-                    ClosingStock = 27,
-                    Unit = "PCS"
-                },
-                new StockMovement { 
-                    ItemName = "Wireless Mouse", 
-                    ItemCode = "MS002",
-                    OpeningStock = 40, 
-                    Bought = 150, 
-                    Sold = 130, 
-                    ClosingStock = 60,
-                    Unit = "PCS"
-                },
-                new StockMovement { 
-                    ItemName = "Keyboard", 
-                    ItemCode = "KB001",
-                    OpeningStock = 25, 
-                    Bought = 80, 
-                    Sold = 70, 
-                    ClosingStock = 35,
-                    Unit = "PCS"
-                }
-            };
-        }
+                while (reader.Read())
+                {
+                    var item = new ReportItem
+                    {
+                        Description = reader["name"].ToString(),
+                        Quantity = Convert.ToDecimal(reader["stock"]),
+                        Amount = Convert.ToDecimal(reader["total_value"]),
+                        Reference = $"Code: {reader["code"]} | Price: {Convert.ToDecimal(reader["price"]):N2} | Unit: {reader["unit"]}"
+                    };
 
-        private List<StockMovement> GetSampleYearlyStockData(int year)
-        {
-            return new List<StockMovement>
-            {
-                new StockMovement { 
-                    ItemName = "Laptop", 
-                    ItemCode = "LP001",
-                    OpeningStock = 15, 
-                    Bought = 150, 
-                    Sold = 138, 
-                    ClosingStock = 27,
-                    Unit = "PCS"
-                },
-                new StockMovement { 
-                    ItemName = "Wireless Mouse", 
-                    ItemCode = "MS002",
-                    OpeningStock = 30, 
-                    Bought = 600, 
-                    Sold = 570, 
-                    ClosingStock = 60,
-                    Unit = "PCS"
-                },
-                new StockMovement { 
-                    ItemName = "Keyboard", 
-                    ItemCode = "KB001",
-                    OpeningStock = 20, 
-                    Bought = 300, 
-                    Sold = 285, 
-                    ClosingStock = 35,
-                    Unit = "PCS"
+                    report.Items.Add(item);
+                    report.TotalAmount += item.Amount;
                 }
-            };
+            }
+
+            report.TotalRecords = report.Items.Count;
+            return report;
         }
     }
 

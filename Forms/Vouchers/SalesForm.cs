@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Data.SQLite;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
 
@@ -9,21 +11,27 @@ namespace BillingSoftware.Forms.Vouchers
     public partial class SalesForm : Form
     {
         private VoucherManager voucherManager;
-        private TextBox voucherNumberTxt, partyTxt, amountTxt, descriptionTxt;
+        private DatabaseManager dbManager;
+        
+        private TextBox voucherNumberTxt, partyTxt, totalAmountTxt;
         private DateTimePicker datePicker;
-        private Button saveBtn, clearBtn;
+        private DataGridView itemsGrid;
+        private Button saveBtn, clearBtn, addItemBtn, removeItemBtn;
+        private List<VoucherItem> saleItems;
 
         public SalesForm()
         {
             InitializeComponent();
             voucherManager = new VoucherManager();
+            dbManager = new DatabaseManager();
+            saleItems = new List<VoucherItem>();
             CreateSalesFormUI();
         }
 
         private void CreateSalesFormUI()
         {
             this.Text = "Sales Voucher";
-            this.Size = new Size(500, 400);
+            this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(248, 249, 250);
 
@@ -41,7 +49,7 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Text = "Sales Details";
             mainGroup.Font = new Font("Segoe UI", 10);
             mainGroup.Location = new Point(20, 70);
-            mainGroup.Size = new Size(450, 250);
+            mainGroup.Size = new Size(750, 450);
             mainGroup.BackColor = Color.White;
 
             // Voucher Number
@@ -56,32 +64,63 @@ namespace BillingSoftware.Forms.Vouchers
             datePicker = new DateTimePicker();
             datePicker.Location = new Point(150, 80);
             datePicker.Size = new Size(200, 25);
-            datePicker.Font = new Font("Segoe UI", 9);
             datePicker.Value = DateTime.Now;
             mainGroup.Controls.Add(datePicker);
 
-            // Party
+            // Customer
             CreateLabel("Customer Name:", 20, 120, mainGroup);
             partyTxt = CreateTextBox(150, 120, 250, mainGroup);
 
-            // Amount
-            CreateLabel("Amount:", 20, 160, mainGroup);
-            amountTxt = CreateTextBox(150, 160, 150, mainGroup);
-            amountTxt.KeyPress += AmountTxt_KeyPress;
+            // Total Amount
+            CreateLabel("Total Amount:", 450, 120, mainGroup);
+            totalAmountTxt = CreateTextBox(550, 120, 150, mainGroup);
+            totalAmountTxt.ReadOnly = true;
+            totalAmountTxt.Text = "0.00";
+            totalAmountTxt.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+            totalAmountTxt.ForeColor = Color.Green;
 
-            // Description
-            CreateLabel("Description:", 20, 200, mainGroup);
-            descriptionTxt = CreateTextBox(150, 200, 250, mainGroup);
-            descriptionTxt.Multiline = true;
-            descriptionTxt.Height = 60;
+            // Items Grid
+            itemsGrid = new DataGridView();
+            itemsGrid.Location = new Point(20, 160);
+            itemsGrid.Size = new Size(710, 200);
+            itemsGrid.BackgroundColor = Color.White;
+            itemsGrid.AllowUserToAddRows = false;
+            itemsGrid.RowHeadersVisible = false;
+            
+            // Add columns
+            itemsGrid.Columns.Add("Product", "Product Name");
+            itemsGrid.Columns.Add("Quantity", "Quantity");
+            itemsGrid.Columns.Add("Unit", "Unit");
+            itemsGrid.Columns.Add("Price", "Unit Price");
+            itemsGrid.Columns.Add("Amount", "Total Amount");
+            
+            // Format columns
+            itemsGrid.Columns["Quantity"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            itemsGrid.Columns["Price"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            itemsGrid.Columns["Amount"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            itemsGrid.Columns["Price"].DefaultCellStyle.Format = "N2";
+            itemsGrid.Columns["Amount"].DefaultCellStyle.Format = "N2";
+            
+            itemsGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            itemsGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            mainGroup.Controls.Add(itemsGrid);
+
+            // Buttons for items
+            addItemBtn = CreateButton("➕ Add Item", Color.FromArgb(52, 152, 219), new Point(20, 370));
+            addItemBtn.Click += AddItemBtn_Click;
+            mainGroup.Controls.Add(addItemBtn);
+
+            removeItemBtn = CreateButton("➖ Remove Item", Color.FromArgb(231, 76, 60), new Point(150, 370));
+            removeItemBtn.Click += RemoveItemBtn_Click;
+            mainGroup.Controls.Add(removeItemBtn);
 
             this.Controls.Add(mainGroup);
 
-            // Buttons
-            saveBtn = CreateButton("Save Sales", Color.FromArgb(46, 204, 113), new Point(20, 340));
+            // Form Buttons
+            saveBtn = CreateButton("💾 Save Sales", Color.FromArgb(46, 204, 113), new Point(20, 540));
             saveBtn.Click += SaveBtn_Click;
 
-            clearBtn = CreateButton("Clear", Color.FromArgb(149, 165, 166), new Point(150, 340));
+            clearBtn = CreateButton("🗑️ Clear", Color.FromArgb(149, 165, 166), new Point(150, 540));
             clearBtn.Click += ClearBtn_Click;
 
             this.Controls.Add(saveBtn);
@@ -123,58 +162,94 @@ namespace BillingSoftware.Forms.Vouchers
             return btn;
         }
 
-        private void AmountTxt_KeyPress(object sender, KeyPressEventArgs e)
+        private void AddItemBtn_Click(object sender, EventArgs e)
         {
-            // Allow only numbers, decimal point, and control characters
-            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
+            // Show dialog to add sale item
+            using (var itemForm = new SalesItemForm())
             {
-                e.Handled = true;
+                if (itemForm.ShowDialog() == DialogResult.OK)
+                {
+                    var item = itemForm.SaleItem;
+                    saleItems.Add(item);
+                    
+                    // Add to grid
+                    itemsGrid.Rows.Add(item.ProductName, item.Quantity, "PCS", item.UnitPrice, item.TotalAmount);
+                    
+                    // Update total amount
+                    UpdateTotalAmount();
+                }
             }
+        }
 
-            // Allow only one decimal point
-            if (e.KeyChar == '.' && (sender as TextBox).Text.IndexOf('.') > -1)
+        private void RemoveItemBtn_Click(object sender, EventArgs e)
+        {
+            if (itemsGrid.SelectedRows.Count > 0)
             {
-                e.Handled = true;
+                var selectedIndex = itemsGrid.SelectedRows[0].Index;
+                if (selectedIndex < saleItems.Count)
+                {
+                    saleItems.RemoveAt(selectedIndex);
+                    itemsGrid.Rows.RemoveAt(selectedIndex);
+                    UpdateTotalAmount();
+                }
             }
+            else
+            {
+                MessageBox.Show("Please select an item to remove.", "Selection Required", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void UpdateTotalAmount()
+        {
+            decimal total = 0;
+            foreach (var item in saleItems)
+            {
+                total += item.TotalAmount;
+            }
+            totalAmountTxt.Text = total.ToString("N2");
         }
 
         private void SaveBtn_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(partyTxt.Text) || string.IsNullOrWhiteSpace(amountTxt.Text))
+            if (string.IsNullOrWhiteSpace(partyTxt.Text) || saleItems.Count == 0)
             {
-                MessageBox.Show("Please enter customer name and amount!", "Validation Error", 
+                MessageBox.Show("Please enter customer name and add at least one item!", "Validation Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (!decimal.TryParse(amountTxt.Text, out decimal amount) || amount <= 0)
+            try
             {
-                MessageBox.Show("Please enter a valid amount greater than 0!", "Validation Error", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+                // Create sales voucher with items
+                var salesVoucher = new Voucher
+                {
+                    Type = "Sales",
+                    Number = voucherNumberTxt.Text,
+                    Date = datePicker.Value,
+                    Party = partyTxt.Text.Trim(),
+                    Amount = decimal.Parse(totalAmountTxt.Text),
+                    Description = $"Sales to {partyTxt.Text.Trim()} - {saleItems.Count} items",
+                    Status = "Active",
+                    Items = saleItems
+                };
 
-            var salesVoucher = new Voucher
-            {
-                Type = "Sales",
-                Number = voucherNumberTxt.Text,
-                Date = datePicker.Value,
-                Party = partyTxt.Text.Trim(),
-                Amount = amount,
-                Description = descriptionTxt.Text,
-                Status = "Active"
-            };
-
-            if (voucherManager.AddVoucher(salesVoucher))
-            {
-                MessageBox.Show("Sales voucher saved successfully!", "Success", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Information);
-                ClearForm();
-                voucherNumberTxt.Text = voucherManager.GenerateVoucherNumber("Sales");
+                if (voucherManager.AddVoucher(salesVoucher))
+                {
+                    MessageBox.Show("Sales voucher saved successfully! Stock levels updated.", "Success", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ClearForm();
+                    voucherNumberTxt.Text = voucherManager.GenerateVoucherNumber("Sales");
+                }
+                else
+                {
+                    MessageBox.Show("Failed to save sales voucher!", "Error", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show("Failed to save sales voucher!", "Error", 
+                MessageBox.Show($"Error saving sales: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -187,8 +262,9 @@ namespace BillingSoftware.Forms.Vouchers
         private void ClearForm()
         {
             partyTxt.Clear();
-            amountTxt.Clear();
-            descriptionTxt.Clear();
+            saleItems.Clear();
+            itemsGrid.Rows.Clear();
+            totalAmountTxt.Text = "0.00";
             datePicker.Value = DateTime.Now;
         }
 
@@ -197,6 +273,180 @@ namespace BillingSoftware.Forms.Vouchers
             this.SuspendLayout();
             this.ClientSize = new System.Drawing.Size(300, 250);
             this.Name = "SalesForm";
+            this.ResumeLayout(false);
+        }
+    }
+
+    public class SalesItemForm : Form
+    {
+        public VoucherItem SaleItem { get; private set; }
+        
+        private ComboBox productCombo;
+        private TextBox quantityTxt, unitPriceTxt;
+        private Button saveBtn, cancelBtn;
+        private DatabaseManager dbManager;
+
+        public SalesItemForm()
+        {
+            InitializeComponent();
+            dbManager = new DatabaseManager();
+            SaleItem = new VoucherItem();
+            CreateItemFormUI();
+            LoadProducts();
+        }
+
+        private void CreateItemFormUI()
+        {
+            this.Text = "Add Sale Item";
+            this.Size = new Size(400, 300);
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.BackColor = Color.FromArgb(248, 249, 250);
+
+            // Title
+            Label titleLabel = new Label();
+            titleLabel.Text = "Add Sale Item";
+            titleLabel.Font = new Font("Segoe UI", 12, FontStyle.Bold);
+            titleLabel.ForeColor = Color.FromArgb(44, 62, 80);
+            titleLabel.Location = new Point(20, 20);
+            titleLabel.Size = new Size(200, 25);
+            this.Controls.Add(titleLabel);
+
+            // Product Combo
+            CreateLabel("Product:", 20, 60);
+            productCombo = new ComboBox();
+            productCombo.Location = new Point(120, 60);
+            productCombo.Size = new Size(200, 25);
+            productCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            this.Controls.Add(productCombo);
+
+            // Quantity
+            CreateLabel("Quantity:", 20, 100);
+            quantityTxt = CreateTextBox(120, 100, 100);
+            quantityTxt.KeyPress += NumericTextBox_KeyPress;
+
+            // Unit Price
+            CreateLabel("Unit Price:", 20, 140);
+            unitPriceTxt = CreateTextBox(120, 140, 100);
+            unitPriceTxt.KeyPress += NumericTextBox_KeyPress;
+
+            // Buttons
+            saveBtn = CreateButton("Save", Color.FromArgb(46, 204, 113), new Point(80, 180));
+            saveBtn.Click += SaveBtn_Click;
+
+            cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(200, 180));
+            cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
+
+            this.Controls.Add(saveBtn);
+            this.Controls.Add(cancelBtn);
+        }
+
+        private void CreateLabel(string text, int x, int y)
+        {
+            var label = new Label 
+            { 
+                Text = text, 
+                Location = new Point(x, y), 
+                Size = new Size(100, 20),
+                Font = new Font("Segoe UI", 9)
+            };
+            this.Controls.Add(label);
+        }
+
+        private TextBox CreateTextBox(int x, int y, int width)
+        {
+            var txt = new TextBox 
+            { 
+                Location = new Point(x, y), 
+                Size = new Size(width, 25),
+                Font = new Font("Segoe UI", 9)
+            };
+            this.Controls.Add(txt);
+            return txt;
+        }
+
+        private Button CreateButton(string text, Color color, Point location)
+        {
+            return new Button
+            {
+                Text = text,
+                BackColor = color,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(80, 30),
+                Location = location,
+                Cursor = Cursors.Hand,
+                Font = new Font("Segoe UI", 9)
+            };
+        }
+
+        private void LoadProducts()
+        {
+            string sql = "SELECT name, price, stock FROM products WHERE stock > 0 ORDER BY name";
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var productName = reader["name"].ToString();
+                    var price = Convert.ToDecimal(reader["price"]);
+                    var stock = Convert.ToDecimal(reader["stock"]);
+                    productCombo.Items.Add($"{productName} (Stock: {stock}, Price: {price:N2})");
+                }
+            }
+        }
+
+        private void NumericTextBox_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
+                e.Handled = true;
+            
+            if (e.KeyChar == '.' && (sender as TextBox).Text.IndexOf('.') > -1)
+                e.Handled = true;
+        }
+
+        private void SaveBtn_Click(object sender, EventArgs e)
+        {
+            if (productCombo.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a product!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!decimal.TryParse(quantityTxt.Text, out decimal quantity) || quantity <= 0)
+            {
+                MessageBox.Show("Please enter valid quantity greater than 0!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!decimal.TryParse(unitPriceTxt.Text, out decimal unitPrice) || unitPrice < 0)
+            {
+                MessageBox.Show("Please enter valid unit price!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Extract product name from combo box
+            var productText = productCombo.SelectedItem.ToString();
+            var productName = productText.Split('(')[0].Trim();
+
+            SaleItem = new VoucherItem
+            {
+                ProductName = productName,
+                Quantity = quantity,
+                UnitPrice = unitPrice
+            };
+
+            this.DialogResult = DialogResult.OK;
+            this.Close();
+        }
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            this.ClientSize = new System.Drawing.Size(300, 250);
+            this.Name = "SalesItemForm";
             this.ResumeLayout(false);
         }
     }

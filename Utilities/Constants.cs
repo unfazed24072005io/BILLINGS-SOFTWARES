@@ -20,8 +20,9 @@ namespace BillingSoftware.Utilities
             public const string PAYMENT = "Payment";
             public const string JOURNAL = "Journal";
             public const string ESTIMATE = "Estimate";
+	    public const string STOCK_PURCHASE = "Stock Purchase";
 
-            public static readonly string[] ALL_TYPES = { SALES, RECEIPT, PAYMENT, JOURNAL, ESTIMATE };
+            public static readonly string[] ALL_TYPES = { SALES, RECEIPT, PAYMENT, JOURNAL, ESTIMATE, STOCK_PURCHASE };
         }
 
         // Voucher Prefixes
@@ -32,6 +33,7 @@ namespace BillingSoftware.Utilities
             public const string PAYMENT = "PAY";
             public const string JOURNAL = "JRN";
             public const string ESTIMATE = "EST";
+	    public const string STOCK_PURCHASE = "STK";
         }
 
         // Voucher Status

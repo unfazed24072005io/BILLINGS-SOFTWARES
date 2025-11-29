@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Data.SQLite;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
 
@@ -9,7 +10,7 @@ namespace BillingSoftware.Forms.Vouchers
     public partial class JournalForm : Form
     {
         private VoucherManager voucherManager;
-        private TextBox voucherNumberTxt, debitAccountTxt, creditAccountTxt, amountTxt, descriptionTxt;
+        private TextBox voucherNumberTxt, debitAccountTxt, creditAccountTxt, amountTxt, descriptionTxt, referenceVoucherTxt;
         private DateTimePicker datePicker;
         private Button saveBtn, clearBtn;
 
@@ -23,7 +24,7 @@ namespace BillingSoftware.Forms.Vouchers
         private void CreateJournalFormUI()
         {
             this.Text = "Journal Voucher";
-            this.Size = new Size(500, 450);
+            this.Size = new Size(500, 500);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(248, 249, 250);
 
@@ -41,7 +42,7 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Text = "Journal Entry Details";
             mainGroup.Font = new Font("Segoe UI", 10);
             mainGroup.Location = new Point(20, 70);
-            mainGroup.Size = new Size(450, 300);
+            mainGroup.Size = new Size(450, 350);
             mainGroup.BackColor = Color.White;
 
             // Voucher Number
@@ -73,19 +74,24 @@ namespace BillingSoftware.Forms.Vouchers
             amountTxt = CreateTextBox(150, 200, 150, mainGroup);
             amountTxt.KeyPress += AmountTxt_KeyPress;
 
+            // Reference Voucher
+            CreateLabel("Reference Voucher:", 20, 240, mainGroup);
+            referenceVoucherTxt = CreateTextBox(150, 240, 150, mainGroup);
+            referenceVoucherTxt.PlaceholderText = "Optional reference";
+
             // Description
-            CreateLabel("Description:", 20, 240, mainGroup);
-            descriptionTxt = CreateTextBox(150, 240, 250, mainGroup);
+            CreateLabel("Description:", 20, 280, mainGroup);
+            descriptionTxt = CreateTextBox(150, 280, 250, mainGroup);
             descriptionTxt.Multiline = true;
             descriptionTxt.Height = 40;
 
             this.Controls.Add(mainGroup);
 
             // Buttons
-            saveBtn = CreateButton("Save Journal", Color.FromArgb(46, 204, 113), new Point(20, 390));
+            saveBtn = CreateButton("Save Journal", Color.FromArgb(46, 204, 113), new Point(20, 440));
             saveBtn.Click += SaveBtn_Click;
 
-            clearBtn = CreateButton("Clear", Color.FromArgb(149, 165, 166), new Point(150, 390));
+            clearBtn = CreateButton("Clear", Color.FromArgb(149, 165, 166), new Point(150, 440));
             clearBtn.Click += ClearBtn_Click;
 
             this.Controls.Add(saveBtn);
@@ -161,7 +167,8 @@ namespace BillingSoftware.Forms.Vouchers
                 Party = $"Dr: {debitAccountTxt.Text} | Cr: {creditAccountTxt.Text}",
                 Amount = amount,
                 Description = descriptionTxt.Text,
-                Status = "Active"
+                Status = "Active",
+                ReferenceVoucher = referenceVoucherTxt.Text.Trim()
             };
 
             if (voucherManager.AddVoucher(journalVoucher))
@@ -189,6 +196,7 @@ namespace BillingSoftware.Forms.Vouchers
             creditAccountTxt.Clear();
             amountTxt.Clear();
             descriptionTxt.Clear();
+            referenceVoucherTxt.Clear();
             datePicker.Value = DateTime.Now;
         }
 
