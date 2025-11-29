@@ -190,7 +190,7 @@ namespace BillingSoftware.Modules
             return report;
         }
 
-        // Sales Report - REAL DATA
+        // Sales Report - REAL DATA with item details
         public Report GenerateSalesReport(DateTime fromDate, DateTime toDate)
         {
             var report = new Report
@@ -202,12 +202,16 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            // REAL DATABASE QUERY - Sales vouchers
-            string sql = @"SELECT * FROM vouchers 
-                           WHERE type = 'Sales' 
-                           AND date BETWEEN @fromDate AND @toDate 
-                           AND status = 'Active'
-                           ORDER BY date DESC";
+            // REAL DATABASE QUERY with item details
+            string sql = @"SELECT v.number, v.date, v.party, v.amount, v.description,
+                                  GROUP_CONCAT(vi.product_name || ' (' || vi.quantity || ' x ' || vi.unit_price || ')', ', ') as items
+                           FROM vouchers v
+                           LEFT JOIN voucher_items vi ON v.number = vi.voucher_number
+                           WHERE v.type = 'Sales' 
+                           AND v.date BETWEEN @fromDate AND @toDate 
+                           AND v.status = 'Active'
+                           GROUP BY v.id
+                           ORDER BY v.date DESC";
 
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
@@ -218,12 +222,17 @@ namespace BillingSoftware.Modules
                 {
                     while (reader.Read())
                     {
+                        var itemsDescription = reader["items"].ToString();
+                        var description = string.IsNullOrEmpty(itemsDescription) ? 
+                            reader["description"].ToString() : 
+                            $"Items: {itemsDescription}";
+
                         var item = new ReportItem
                         {
-                            Description = reader["description"].ToString(),
+                            Description = $"{reader["party"]} - {description}",
                             Amount = Convert.ToDecimal(reader["amount"]),
                             Date = DateTime.Parse(reader["date"].ToString()),
-                            Reference = $"{reader["number"]} - {reader["party"]}"
+                            Reference = reader["number"].ToString()
                         };
 
                         report.Items.Add(item);
@@ -249,7 +258,7 @@ namespace BillingSoftware.Modules
             };
 
             // REAL DATABASE QUERY - All financial transactions
-            string sql = @"SELECT type, number, date, party, amount, description 
+            string sql = @"SELECT type, number, date, party, amount, description, reference_voucher
                            FROM vouchers 
                            WHERE date BETWEEN @fromDate AND @toDate 
                            AND status = 'Active'
@@ -264,9 +273,12 @@ namespace BillingSoftware.Modules
                 {
                     while (reader.Read())
                     {
+                        var reference = reader["reference_voucher"].ToString();
+                        var referenceText = string.IsNullOrEmpty(reference) ? "" : $"(Ref: {reference})";
+
                         var item = new ReportItem
                         {
-                            Description = $"{reader["type"]} - {reader["party"]}",
+                            Description = $"{reader["type"]} - {reader["party"]} {referenceText}",
                             Amount = Convert.ToDecimal(reader["amount"]),
                             Date = DateTime.Parse(reader["date"].ToString()),
                             Reference = reader["number"].ToString()
@@ -329,7 +341,7 @@ namespace BillingSoftware.Modules
             return report;
         }
 
-        // Stock Report (Generic) - REAL DATA
+        // Stock Report - Shows ALL products including newly added ones
         public Report GenerateStockReport(string reportType)
         {
             var report = new Report
@@ -339,7 +351,7 @@ namespace BillingSoftware.Modules
                 GeneratedDate = DateTime.Now
             };
 
-            // REAL DATABASE QUERY - Current stock
+            // REAL DATABASE QUERY - ALL products (including zero stock)
             string sql = "SELECT * FROM products ORDER BY name";
             
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
@@ -351,12 +363,57 @@ namespace BillingSoftware.Modules
                     var price = Convert.ToDecimal(reader["price"]);
                     var minStock = Convert.ToDecimal(reader["min_stock"]);
                     
+                    // Determine stock status
+                    string stockStatus = "Normal";
+                    if (stock == 0)
+                        stockStatus = "Out of Stock";
+                    else if (stock <= minStock)
+                        stockStatus = "Low Stock";
+                    
                     var item = new ReportItem
                     {
                         Description = reader["name"].ToString(),
                         Quantity = stock,
                         Amount = stock * price,
-                        Reference = $"Code: {reader["code"]} | Min Stock: {minStock} | Unit: {reader["unit"]}"
+                        Reference = $"Code: {reader["code"]} | Min: {minStock} | Unit: {reader["unit"]} | Status: {stockStatus}"
+                    };
+
+                    report.Items.Add(item);
+                    report.TotalAmount += item.Amount;
+                }
+            }
+
+            report.TotalRecords = report.Items.Count;
+            return report;
+        }
+
+        // Stock Valuation Report - REAL DATA
+        public Report GenerateStockValuationReport()
+        {
+            var report = new Report
+            {
+                Type = "Stock Valuation",
+                Title = $"Stock Valuation Report - {DateTime.Now:dd-MMM-yyyy}",
+                GeneratedDate = DateTime.Now
+            };
+
+            // REAL DATABASE QUERY - Stock valuation
+            string sql = @"SELECT name, code, stock, unit, price, (stock * price) as total_value
+                           FROM products 
+                           WHERE stock > 0
+                           ORDER BY total_value DESC";
+            
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var item = new ReportItem
+                    {
+                        Description = reader["name"].ToString(),
+                        Quantity = Convert.ToDecimal(reader["stock"]),
+                        Amount = Convert.ToDecimal(reader["total_value"]),
+                        Reference = $"Code: {reader["code"]} | Price: {Convert.ToDecimal(reader["price"]):N2} | Unit: {reader["unit"]}"
                     };
 
                     report.Items.Add(item);
@@ -397,42 +454,41 @@ namespace BillingSoftware.Modules
             return lowStockProducts;
         }
 
-        // Stock Valuation Report - REAL DATA
-        public Report GenerateStockValuationReport()
+        // Get Stock Movement History
+        public List<StockMovement> GetStockMovementHistory(string productName, DateTime fromDate, DateTime toDate)
         {
-            var report = new Report
-            {
-                Type = "Stock Valuation",
-                Title = $"Stock Valuation Report - {DateTime.Now:dd-MMM-yyyy}",
-                GeneratedDate = DateTime.Now
-            };
-
-            // REAL DATABASE QUERY - Stock valuation
-            string sql = @"SELECT name, code, stock, unit, price, (stock * price) as total_value
-                           FROM products 
-                           WHERE stock > 0
-                           ORDER BY total_value DESC";
+            var movements = new List<StockMovement>();
+            
+            string sql = @"SELECT * FROM stock_transactions 
+                           WHERE product_name = @productName 
+                           AND transaction_date BETWEEN @fromDate AND @toDate
+                           ORDER BY transaction_date DESC";
             
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-            using (var reader = cmd.ExecuteReader())
             {
-                while (reader.Read())
+                cmd.Parameters.AddWithValue("@productName", productName);
+                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
+                
+                using (var reader = cmd.ExecuteReader())
                 {
-                    var item = new ReportItem
+                    while (reader.Read())
                     {
-                        Description = reader["name"].ToString(),
-                        Quantity = Convert.ToDecimal(reader["stock"]),
-                        Amount = Convert.ToDecimal(reader["total_value"]),
-                        Reference = $"Code: {reader["code"]} | Price: {Convert.ToDecimal(reader["price"]):N2} | Unit: {reader["unit"]}"
-                    };
-
-                    report.Items.Add(item);
-                    report.TotalAmount += item.Amount;
+                        movements.Add(new StockMovement
+                        {
+                            ItemName = reader["product_name"].ToString(),
+                            TransactionType = reader["transaction_type"].ToString(),
+                            Quantity = Convert.ToDecimal(reader["quantity"]),
+                            UnitPrice = Convert.ToDecimal(reader["unit_price"]),
+                            VoucherNumber = reader["voucher_number"].ToString(),
+                            Date = DateTime.Parse(reader["transaction_date"].ToString()),
+                            Notes = reader["notes"].ToString()
+                        });
+                    }
                 }
             }
-
-            report.TotalRecords = report.Items.Count;
-            return report;
+            
+            return movements;
         }
     }
 
@@ -440,14 +496,12 @@ namespace BillingSoftware.Modules
     public class StockMovement
     {
         public string ItemName { get; set; } = "";
-        public string ItemCode { get; set; } = "";
-        public decimal OpeningStock { get; set; }
-        public decimal Bought { get; set; }
-        public decimal Sold { get; set; }
-        public decimal ClosingStock { get; set; }
-        public string Unit { get; set; } = "PCS";
+        public string TransactionType { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal TotalAmount => Quantity * UnitPrice;
+        public string VoucherNumber { get; set; } = "";
         public DateTime Date { get; set; } = DateTime.Now;
-
-        public decimal ClosingStockCalculated => OpeningStock + Bought - Sold;
+        public string Notes { get; set; } = "";
     }
 }

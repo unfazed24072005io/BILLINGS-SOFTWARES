@@ -29,7 +29,26 @@ namespace BillingSoftware.Modules
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
+	// Method to get all products including zero stock
+public System.Data.DataTable GetAllProducts()
+{
+    var dataTable = new System.Data.DataTable();
+    try
+    {
+        string sql = "SELECT name, code, price, stock, unit, min_stock FROM products ORDER BY name";
+        using (var cmd = new SQLiteCommand(sql, connection))
+        using (var adapter = new SQLiteDataAdapter(cmd))
+        {
+            adapter.Fill(dataTable);
+        }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error loading products: {ex.Message}", "Error", 
+                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+    return dataTable;
+}
         public void CreateDatabase()
         {
             CreateTables();

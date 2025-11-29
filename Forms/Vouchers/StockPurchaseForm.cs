@@ -258,37 +258,83 @@ namespace BillingSoftware.Forms.Vouchers
         }
 
         private void UpdateProductStock()
+{
+    foreach (var item in purchaseItems)
+    {
+        // First, check if product exists, if not create it
+        string checkProductSql = "SELECT COUNT(*) FROM products WHERE name = @productName";
+        using (var checkCmd = new SQLiteCommand(checkProductSql, dbManager.GetConnection()))
         {
-            foreach (var item in purchaseItems)
+            checkCmd.Parameters.AddWithValue("@productName", item.ProductName);
+            var exists = Convert.ToInt32(checkCmd.ExecuteScalar()) > 0;
+
+            if (!exists)
             {
-                // Update product stock in database
-                string updateSql = @"UPDATE products SET stock = stock + @quantity 
-                                  WHERE name = @productName";
-                
-                using (var cmd = new SQLiteCommand(updateSql, dbManager.GetConnection()))
+                // Create new product
+                string insertProductSql = @"INSERT INTO products (name, code, price, stock, unit, min_stock) 
+                                          VALUES (@name, @code, @price, @stock, @unit, @minStock)";
+                using (var insertCmd = new SQLiteCommand(insertProductSql, dbManager.GetConnection()))
                 {
-                    cmd.Parameters.AddWithValue("@quantity", item.Quantity);
-                    cmd.Parameters.AddWithValue("@productName", item.ProductName);
-                    cmd.ExecuteNonQuery();
+                    // Generate code from product name
+                    string code = GenerateProductCode(item.ProductName);
+                    
+                    insertCmd.Parameters.AddWithValue("@name", item.ProductName);
+                    insertCmd.Parameters.AddWithValue("@code", code);
+                    insertCmd.Parameters.AddWithValue("@price", item.UnitPrice);
+                    insertCmd.Parameters.AddWithValue("@stock", item.Quantity); // Initial stock
+                    insertCmd.Parameters.AddWithValue("@unit", item.Unit);
+                    insertCmd.Parameters.AddWithValue("@minStock", 10); // Default minimum stock
+                    insertCmd.ExecuteNonQuery();
                 }
-
-                // Add stock transaction record
-                string transactionSql = @"INSERT INTO stock_transactions 
-                                        (product_name, transaction_type, quantity, unit_price, total_amount, voucher_number, notes)
-                                        VALUES (@productName, 'PURCHASE', @quantity, @unitPrice, @totalAmount, @voucherNumber, @notes)";
-
-                using (var cmd = new SQLiteCommand(transactionSql, dbManager.GetConnection()))
+            }
+            else
+            {
+                // Update existing product stock and price
+                string updateSql = @"UPDATE products SET stock = stock + @quantity, price = @price 
+                                  WHERE name = @productName";
+                using (var updateCmd = new SQLiteCommand(updateSql, dbManager.GetConnection()))
                 {
-                    cmd.Parameters.AddWithValue("@productName", item.ProductName);
-                    cmd.Parameters.AddWithValue("@quantity", item.Quantity);
-                    cmd.Parameters.AddWithValue("@unitPrice", item.UnitPrice);
-                    cmd.Parameters.AddWithValue("@totalAmount", item.TotalAmount);
-                    cmd.Parameters.AddWithValue("@voucherNumber", voucherNumberTxt.Text);
-                    cmd.Parameters.AddWithValue("@notes", $"Purchase from {supplierTxt.Text.Trim()}");
-                    cmd.ExecuteNonQuery();
+                    updateCmd.Parameters.AddWithValue("@quantity", item.Quantity);
+                    updateCmd.Parameters.AddWithValue("@price", item.UnitPrice);
+                    updateCmd.Parameters.AddWithValue("@productName", item.ProductName);
+                    updateCmd.ExecuteNonQuery();
                 }
             }
         }
+
+        // Add stock transaction record
+        string transactionSql = @"INSERT INTO stock_transactions 
+                                (product_name, transaction_type, quantity, unit_price, total_amount, voucher_number, notes)
+                                VALUES (@productName, 'PURCHASE', @quantity, @unitPrice, @totalAmount, @voucherNumber, @notes)";
+
+        using (var cmd = new SQLiteCommand(transactionSql, dbManager.GetConnection()))
+        {
+            cmd.Parameters.AddWithValue("@productName", item.ProductName);
+            cmd.Parameters.AddWithValue("@quantity", item.Quantity);
+            cmd.Parameters.AddWithValue("@unitPrice", item.UnitPrice);
+            cmd.Parameters.AddWithValue("@totalAmount", item.TotalAmount);
+            cmd.Parameters.AddWithValue("@voucherNumber", voucherNumberTxt.Text);
+            cmd.Parameters.AddWithValue("@notes", $"Purchase from {supplierTxt.Text.Trim()}");
+            cmd.ExecuteNonQuery();
+        }
+    }
+}
+
+private string GenerateProductCode(string productName)
+{
+    // Generate a simple code from product name
+    string code = productName.Replace(" ", "").ToUpper();
+    if (code.Length > 6)
+    {
+        code = code.Substring(0, 6);
+    }
+    
+    // Add random numbers to make it unique
+    Random random = new Random();
+    code += random.Next(100, 999).ToString();
+    
+    return code;
+}
 
         private void ClearBtn_Click(object sender, EventArgs e)
         {

@@ -88,7 +88,10 @@ namespace BillingSoftware
             Button quickReceiptBtn = CreateModernButton("Create Receipt", primaryBlue, new Point(200, 150));
             Button stockPurchaseBtn = CreateModernButton("Stock Purchase", Color.Orange, new Point(380, 150));
             Button stockReportBtn = CreateModernButton("Stock Report", primaryPurple, new Point(560, 150));
-            
+            Button productManagementBtn = CreateModernButton("Manage Products", Color.FromArgb(155, 89, 182), new Point(560, 200));
+productManagementBtn.Click += (s, e) => ShowProductManagementForm();
+dashboardTab.Controls.Add(productManagementBtn);
+
             quickSalesBtn.Click += (s, e) => { 
                 mainTabControl.SelectedIndex = 1; 
                 ShowSalesForm();
@@ -112,7 +115,11 @@ namespace BillingSoftware
             
             mainTabControl.TabPages.Add(dashboardTab);
         }
-
+	private void ShowProductManagementForm()
+{
+    Forms.ProductManagementForm productForm = new Forms.ProductManagementForm();
+    productForm.ShowDialog();
+}
         private void CreateVouchersTab()
         {
             TabPage vouchersTab = new TabPage("🧾 Vouchers");

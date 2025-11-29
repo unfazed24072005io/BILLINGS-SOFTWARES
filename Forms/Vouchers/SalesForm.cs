@@ -380,20 +380,53 @@ namespace BillingSoftware.Forms.Vouchers
         }
 
         private void LoadProducts()
+{
+    productCombo.Items.Clear();
+    
+    string sql = "SELECT name, price, stock FROM products ORDER BY name";
+    using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+    using (var reader = cmd.ExecuteReader())
+    {
+        while (reader.Read())
         {
-            string sql = "SELECT name, price, stock FROM products WHERE stock > 0 ORDER BY name";
-            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-            using (var reader = cmd.ExecuteReader())
+            var productName = reader["name"].ToString();
+            var price = Convert.ToDecimal(reader["price"]);
+            var stock = Convert.ToDecimal(reader["stock"]);
+            
+            // Only show products with stock > 0
+            if (stock > 0)
             {
-                while (reader.Read())
-                {
-                    var productName = reader["name"].ToString();
-                    var price = Convert.ToDecimal(reader["price"]);
-                    var stock = Convert.ToDecimal(reader["stock"]);
-                    productCombo.Items.Add($"{productName} (Stock: {stock}, Price: {price:N2})");
-                }
+                productCombo.Items.Add($"{productName} (Stock: {stock}, Price: ₹{price:N2})");
             }
         }
+    }
+    
+    // Auto-fill price when product is selected
+    productCombo.SelectedIndexChanged += ProductCombo_SelectedIndexChanged;
+}
+
+private void ProductCombo_SelectedIndexChanged(object sender, EventArgs e)
+{
+    if (productCombo.SelectedItem != null)
+    {
+        var selectedText = productCombo.SelectedItem.ToString();
+        
+        // Extract product name
+        var productName = selectedText.Split('(')[0].Trim();
+        
+        // Get current price from database
+        string sql = "SELECT price FROM products WHERE name = @name";
+        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+        {
+            cmd.Parameters.AddWithValue("@name", productName);
+            var result = cmd.ExecuteScalar();
+            if (result != null)
+            {
+                unitPriceTxt.Text = Convert.ToDecimal(result).ToString("N2");
+            }
+        }
+    }
+}
 
         private void NumericTextBox_KeyPress(object sender, KeyPressEventArgs e)
         {
