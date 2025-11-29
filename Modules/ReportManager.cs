@@ -425,6 +425,73 @@ namespace BillingSoftware.Modules
             return report;
         }
 
+        // Stock Movement Report with Opening Balance, Bought, Sold, Closing Balance
+        public List<StockMovementItem> GenerateStockMovementReport(DateTime fromDate, DateTime toDate)
+        {
+            var stockItems = new List<StockMovementItem>();
+
+            // REAL DATABASE QUERY - Stock movement with proper calculations
+            string sql = @"SELECT 
+                    p.name as Item,
+                    p.unit as Unit,
+                    p.code as Code,
+                    p.stock as ClosingBalance,
+                    p.price as Price,
+                    COALESCE((
+                        SELECT SUM(quantity) 
+                        FROM stock_transactions 
+                        WHERE product_name = p.name 
+                        AND transaction_type = 'PURCHASE'
+                        AND transaction_date BETWEEN @fromDate AND @toDate
+                    ), 0) as Bought,
+                    COALESCE((
+                        SELECT SUM(quantity) 
+                        FROM stock_transactions 
+                        WHERE product_name = p.name 
+                        AND transaction_type = 'SALE'
+                        AND transaction_date BETWEEN @fromDate AND @toDate
+                    ), 0) as Sold
+                   FROM products p
+                   ORDER BY p.name";
+
+            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+            {
+                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var item = reader["Item"].ToString();
+                        var unit = reader["Unit"].ToString();
+                        var code = reader["Code"].ToString();
+                        var closingBalance = Convert.ToDecimal(reader["ClosingBalance"]);
+                        var bought = Convert.ToDecimal(reader["Bought"]);
+                        var sold = Convert.ToDecimal(reader["Sold"]);
+                        var price = Convert.ToDecimal(reader["Price"]);
+                        
+                        // Calculate opening balance: Closing - Bought + Sold
+                        var openingBalance = closingBalance - bought + sold;
+
+                        stockItems.Add(new StockMovementItem
+                        {
+                            Item = item,
+                            Code = code,
+                            Unit = unit,
+                            OpeningBalance = openingBalance,
+                            Bought = bought,
+                            Sold = sold,
+                            ClosingBalance = closingBalance,
+                            Price = price
+                        });
+                    }
+                }
+            }
+
+            return stockItems;
+        }
+
         // Low Stock Products - REAL DATA
         public List<Product> GetLowStockProducts()
         {
@@ -453,55 +520,19 @@ namespace BillingSoftware.Modules
             
             return lowStockProducts;
         }
-
-        // Get Stock Movement History
-        public List<StockMovement> GetStockMovementHistory(string productName, DateTime fromDate, DateTime toDate)
-        {
-            var movements = new List<StockMovement>();
-            
-            string sql = @"SELECT * FROM stock_transactions 
-                           WHERE product_name = @productName 
-                           AND transaction_date BETWEEN @fromDate AND @toDate
-                           ORDER BY transaction_date DESC";
-            
-            using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-            {
-                cmd.Parameters.AddWithValue("@productName", productName);
-                cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
-                cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
-                
-                using (var reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        movements.Add(new StockMovement
-                        {
-                            ItemName = reader["product_name"].ToString(),
-                            TransactionType = reader["transaction_type"].ToString(),
-                            Quantity = Convert.ToDecimal(reader["quantity"]),
-                            UnitPrice = Convert.ToDecimal(reader["unit_price"]),
-                            VoucherNumber = reader["voucher_number"].ToString(),
-                            Date = DateTime.Parse(reader["transaction_date"].ToString()),
-                            Notes = reader["notes"].ToString()
-                        });
-                    }
-                }
-            }
-            
-            return movements;
-        }
     }
 
     // Stock Movement class for detailed tracking
-    public class StockMovement
+    public class StockMovementItem
     {
-        public string ItemName { get; set; } = "";
-        public string TransactionType { get; set; } = "";
-        public decimal Quantity { get; set; }
-        public decimal UnitPrice { get; set; }
-        public decimal TotalAmount => Quantity * UnitPrice;
-        public string VoucherNumber { get; set; } = "";
-        public DateTime Date { get; set; } = DateTime.Now;
-        public string Notes { get; set; } = "";
+        public string Item { get; set; } = "";
+        public string Code { get; set; } = "";
+        public string Unit { get; set; } = "PCS";
+        public decimal OpeningBalance { get; set; }
+        public decimal Bought { get; set; }
+        public decimal Sold { get; set; }
+        public decimal ClosingBalance { get; set; }
+        public decimal Price { get; set; }
+        public decimal Value => ClosingBalance * Price;
     }
 }

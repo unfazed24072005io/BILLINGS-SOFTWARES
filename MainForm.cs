@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Data;
 using System.Linq;
+using System.Collections.Generic;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
 
@@ -88,10 +89,8 @@ namespace BillingSoftware
             Button quickReceiptBtn = CreateModernButton("Create Receipt", primaryBlue, new Point(200, 150));
             Button stockPurchaseBtn = CreateModernButton("Stock Purchase", Color.Orange, new Point(380, 150));
             Button stockReportBtn = CreateModernButton("Stock Report", primaryPurple, new Point(560, 150));
-            Button productManagementBtn = CreateModernButton("Manage Products", Color.FromArgb(155, 89, 182), new Point(560, 200));
-productManagementBtn.Click += (s, e) => ShowProductManagementForm();
-dashboardTab.Controls.Add(productManagementBtn);
-
+            Button productManagementBtn = CreateModernButton("Manage Products", Color.FromArgb(155, 89, 182), new Point(20, 200));
+            
             quickSalesBtn.Click += (s, e) => { 
                 mainTabControl.SelectedIndex = 1; 
                 ShowSalesForm();
@@ -105,6 +104,7 @@ dashboardTab.Controls.Add(productManagementBtn);
                 ShowStockPurchaseForm();
             };
             stockReportBtn.Click += (s, e) => { mainTabControl.SelectedIndex = 2; };
+            productManagementBtn.Click += (s, e) => ShowProductManagementForm();
             
             dashboardTab.Controls.Add(dashboardTitle);
             dashboardTab.Controls.Add(dashboardSummaryLabel);
@@ -112,14 +112,11 @@ dashboardTab.Controls.Add(productManagementBtn);
             dashboardTab.Controls.Add(quickReceiptBtn);
             dashboardTab.Controls.Add(stockPurchaseBtn);
             dashboardTab.Controls.Add(stockReportBtn);
+            dashboardTab.Controls.Add(productManagementBtn);
             
             mainTabControl.TabPages.Add(dashboardTab);
         }
-	private void ShowProductManagementForm()
-{
-    Forms.ProductManagementForm productForm = new Forms.ProductManagementForm();
-    productForm.ShowDialog();
-}
+
         private void CreateVouchersTab()
         {
             TabPage vouchersTab = new TabPage("🧾 Vouchers");
@@ -433,26 +430,31 @@ dashboardTab.Controls.Add(productManagementBtn);
                 var reportSummaryLabel = reportsTab.Controls.Find("summaryLabel", true)[0] as Label;
 
                 Report report = null;
+                List<StockMovementItem> stockMovementItems = null;
 
                 switch (reportType)
                 {
                     case "📊 Daily Stock Report":
                         var dailyDate = (datePanel.Controls.Find("dailyPicker", true)[0] as DateTimePicker).Value;
-                        report = reportManager.GenerateDailyStockReport(dailyDate);
+                        stockMovementItems = reportManager.GenerateStockMovementReport(dailyDate, dailyDate);
                         break;
                     case "📈 Monthly Stock Report":
                         var month = (datePanel.Controls.Find("monthCombo", true)[0] as ComboBox).SelectedIndex + 1;
                         var year = (int)(datePanel.Controls.Find("yearPicker", true)[0] as NumericUpDown).Value;
-                        report = reportManager.GenerateMonthlyStockReport(year, month);
+                        var fromDate = new DateTime(year, month, 1);
+                        var toDate = fromDate.AddMonths(1).AddDays(-1);
+                        stockMovementItems = reportManager.GenerateStockMovementReport(fromDate, toDate);
                         break;
                     case "📅 Yearly Stock Summary":
                         var reportYear = (int)(datePanel.Controls.Find("yearPicker", true)[0] as NumericUpDown).Value;
-                        report = reportManager.GenerateYearlyStockReport(reportYear);
+                        stockMovementItems = reportManager.GenerateStockMovementReport(
+                            new DateTime(reportYear, 1, 1), 
+                            new DateTime(reportYear, 12, 31));
                         break;
                     case "💰 Sales Report":
-                        var fromDate = (datePanel.Controls.Find("fromPicker", true)[0] as DateTimePicker).Value;
-                        var toDate = (datePanel.Controls.Find("toPicker", true)[0] as DateTimePicker).Value;
-                        report = reportManager.GenerateSalesReport(fromDate, toDate);
+                        var salesFromDate = (datePanel.Controls.Find("fromPicker", true)[0] as DateTimePicker).Value;
+                        var salesToDate = (datePanel.Controls.Find("toPicker", true)[0] as DateTimePicker).Value;
+                        report = reportManager.GenerateSalesReport(salesFromDate, salesToDate);
                         break;
                     case "💸 Financial Report":
                         var finFromDate = (datePanel.Controls.Find("fromPicker", true)[0] as DateTimePicker).Value;
@@ -467,15 +469,23 @@ dashboardTab.Controls.Add(productManagementBtn);
                         return;
                 }
 
-                if (report != null)
+                if (stockMovementItems != null)
+                {
+                    DisplayStockMovementReport(reportsGridView, stockMovementItems);
+                    var totalItems = stockMovementItems.Count;
+                    var totalClosingValue = stockMovementItems.Sum(x => x.Value);
+                    reportSummaryLabel.Text = $"{reportType} | Total Items: {totalItems} | Total Closing Value: ₹{totalClosingValue:N2}";
+                    
+                    MessageBox.Show($"✅ {reportType} generated successfully!\n\nItems: {totalItems}", 
+                                  "Report Generated", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else if (report != null)
                 {
                     reportsGridView.DataSource = report.Items;
                     reportSummaryLabel.Text = $"{report.Title} | Generated: {report.GeneratedDate:HH:mm:ss} | Total Records: {report.TotalRecords} | Total Amount: ₹{report.TotalAmount:N2}";
-                    
-                    // Format the grid based on report type
                     FormatReportGrid(reportsGridView, report.Type);
                     
-                    MessageBox.Show($"✅ {reportType} generated successfully!\n\nRecords: {report.TotalRecords}\nTotal Amount: ₹{report.TotalAmount:N2}", 
+                    MessageBox.Show($"✅ {reportType} generated successfully!\n\nRecords: {report.TotalRecords}", 
                                   "Report Generated", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
@@ -483,6 +493,86 @@ dashboardTab.Controls.Add(productManagementBtn);
             {
                 MessageBox.Show($"Error generating report: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Method to display stock movement report in the desired format
+        private void DisplayStockMovementReport(DataGridView grid, List<StockMovementItem> stockItems)
+        {
+            // Create a DataTable for proper data binding
+            var dataTable = new System.Data.DataTable();
+            
+            // Add columns
+            dataTable.Columns.Add("Item", typeof(string));
+            dataTable.Columns.Add("Code", typeof(string));
+            dataTable.Columns.Add("Unit", typeof(string));
+            dataTable.Columns.Add("OpeningBalance", typeof(decimal));
+            dataTable.Columns.Add("Bought", typeof(decimal));
+            dataTable.Columns.Add("Sold", typeof(decimal));
+            dataTable.Columns.Add("ClosingBalance", typeof(decimal));
+            dataTable.Columns.Add("Value", typeof(decimal));
+            
+            // Add rows
+            foreach (var item in stockItems)
+            {
+                dataTable.Rows.Add(
+                    item.Item,
+                    item.Code,
+                    item.Unit,
+                    item.OpeningBalance,
+                    item.Bought,
+                    item.Sold,
+                    item.ClosingBalance,
+                    item.Value
+                );
+            }
+            
+            // Bind to grid
+            grid.DataSource = dataTable;
+            
+            // Customize column headers
+            grid.Columns["Item"].HeaderText = "Item";
+            grid.Columns["Code"].HeaderText = "Code";
+            grid.Columns["Unit"].HeaderText = "Unit";
+            grid.Columns["OpeningBalance"].HeaderText = "Opening Balance";
+            grid.Columns["Bought"].HeaderText = "Bought";
+            grid.Columns["Sold"].HeaderText = "Sold";
+            grid.Columns["ClosingBalance"].HeaderText = "Closing Balance";
+            grid.Columns["Value"].HeaderText = "Value (₹)";
+            
+            // Format numeric columns
+            foreach (DataGridViewColumn column in grid.Columns)
+            {
+                if (column.Name == "OpeningBalance" || column.Name == "Bought" || 
+                    column.Name == "Sold" || column.Name == "ClosingBalance" || column.Name == "Value")
+                {
+                    column.DefaultCellStyle.Format = "N2";
+                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+            }
+            
+            // Auto-size columns for better appearance
+            grid.AutoResizeColumns();
+        }
+
+        private void FormatReportGrid(DataGridView grid, string reportType)
+        {
+            foreach (DataGridViewColumn column in grid.Columns)
+            {
+                if (column.Name == "Amount" || column.Name.EndsWith("Amount"))
+                {
+                    column.DefaultCellStyle.Format = "N2";
+                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                    column.DefaultCellStyle.ForeColor = Color.Green;
+                }
+                else if (column.Name == "Quantity" || column.Name.EndsWith("Quantity"))
+                {
+                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+                else if (column.Name == "Date" || column.Name.EndsWith("Date"))
+                {
+                    column.DefaultCellStyle.Format = "dd-MMM-yyyy";
+                }
             }
         }
 
@@ -506,27 +596,6 @@ dashboardTab.Controls.Add(productManagementBtn);
             reportText += $"Action Required: Please restock these items immediately!";
             
             MessageBox.Show(reportText, "Low Stock Alert", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void FormatReportGrid(DataGridView grid, string reportType)
-        {
-            foreach (DataGridViewColumn column in grid.Columns)
-            {
-                if (column.Name == "Amount" || column.Name.EndsWith("Amount"))
-                {
-                    column.DefaultCellStyle.Format = "N2";
-                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-                    column.DefaultCellStyle.ForeColor = Color.Green;
-                }
-                else if (column.Name == "Quantity" || column.Name.EndsWith("Quantity"))
-                {
-                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-                }
-                else if (column.Name == "Date" || column.Name.EndsWith("Date"))
-                {
-                    column.DefaultCellStyle.Format = "dd-MMM-yyyy";
-                }
-            }
         }
 
         private void ExportStockReport()
@@ -702,6 +771,13 @@ Last Updated: {DateTime.Now:HH:mm:ss}";
             Forms.Vouchers.StockPurchaseForm stockForm = new Forms.Vouchers.StockPurchaseForm();
             stockForm.ShowDialog();
             LoadVouchersData();
+            LoadDashboardData();
+        }
+
+        private void ShowProductManagementForm()
+        {
+            Forms.ProductManagementForm productForm = new Forms.ProductManagementForm();
+            productForm.ShowDialog();
             LoadDashboardData();
         }
 
