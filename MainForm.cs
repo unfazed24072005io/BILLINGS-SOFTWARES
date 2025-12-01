@@ -1,8 +1,10 @@
+using BillingSoftware.Forms;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Data;
 using System.Linq;
+using System.Data.SQLite;
 using System.Collections.Generic;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
@@ -14,7 +16,6 @@ namespace BillingSoftware
         private DatabaseManager dbManager;
         private VoucherManager voucherManager;
         private ReportManager reportManager;
-        private UserManager userManager;
 
         private TabControl mainTabControl;
         private DataGridView vouchersGridView;
@@ -24,6 +25,7 @@ namespace BillingSoftware
         private Color primaryBlue = Color.FromArgb(52, 152, 219);
         private Color darkText = Color.FromArgb(44, 62, 80);
         private Color lightBg = Color.FromArgb(248, 249, 250);
+        private Color primaryOrange = Color.FromArgb(230, 126, 34);
         private Color primaryPurple = Color.FromArgb(155, 89, 182);
 
         public MainForm()
@@ -33,7 +35,6 @@ namespace BillingSoftware
             dbManager = new DatabaseManager();
             voucherManager = new VoucherManager();
             reportManager = new ReportManager();
-            userManager = new UserManager();
             
             InitializeApplication();
         }
@@ -44,8 +45,8 @@ namespace BillingSoftware
             CreateMainUI();
             LoadDashboardData();
             
-            this.Text = "Modern Billing Software";
-            this.Size = new Size(1200, 700);
+            this.Text = "Simple Billing Software";
+            this.Size = new Size(1000, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = lightBg;
         }
@@ -58,16 +59,15 @@ namespace BillingSoftware
             
             CreateDashboardTab();
             CreateVouchersTab();
+            CreateProductsTab();
             CreateReportsTab();
-            CreateUsersTab();
-            CreateSettingsTab();
             
             this.Controls.Add(mainTabControl);
         }
 
         private void CreateDashboardTab()
         {
-            TabPage dashboardTab = new TabPage("📊 Dashboard");
+            TabPage dashboardTab = new TabPage("🏠 Dashboard");
             dashboardTab.BackColor = lightBg;
             
             Label dashboardTitle = new Label();
@@ -85,34 +85,31 @@ namespace BillingSoftware
             dashboardSummaryLabel.Size = new Size(500, 200);
             dashboardSummaryLabel.AutoSize = false;
             
-            Button quickSalesBtn = CreateModernButton("Create Sales Voucher", primaryGreen, new Point(20, 150));
-            Button quickReceiptBtn = CreateModernButton("Create Receipt", primaryBlue, new Point(200, 150));
-            Button stockPurchaseBtn = CreateModernButton("Stock Purchase", Color.Orange, new Point(380, 150));
-            Button stockReportBtn = CreateModernButton("Stock Report", primaryPurple, new Point(560, 150));
-            Button productManagementBtn = CreateModernButton("Manage Products", Color.FromArgb(155, 89, 182), new Point(20, 200));
+            Button quickSalesBtn = CreateModernButton("Create Sales", primaryGreen, new Point(20, 150));
+            Button quickPurchaseBtn = CreateModernButton("Create Purchase", primaryOrange, new Point(200, 150));
+            Button quickEstimateBtn = CreateModernButton("Create Estimate", primaryPurple, new Point(380, 150));
+            Button stockReportBtn = CreateModernButton("Stock Report", primaryBlue, new Point(560, 150));
             
             quickSalesBtn.Click += (s, e) => { 
                 mainTabControl.SelectedIndex = 1; 
                 ShowSalesForm();
             };
-            quickReceiptBtn.Click += (s, e) => { 
-                mainTabControl.SelectedIndex = 1; 
-                ShowReceiptForm();
-            };
-            stockPurchaseBtn.Click += (s, e) => { 
+            quickPurchaseBtn.Click += (s, e) => { 
                 mainTabControl.SelectedIndex = 1; 
                 ShowStockPurchaseForm();
             };
-            stockReportBtn.Click += (s, e) => { mainTabControl.SelectedIndex = 2; };
-            productManagementBtn.Click += (s, e) => ShowProductManagementForm();
+            quickEstimateBtn.Click += (s, e) => { 
+                mainTabControl.SelectedIndex = 1; 
+                ShowEstimateForm();
+            };
+            stockReportBtn.Click += (s, e) => { mainTabControl.SelectedIndex = 3; };
             
             dashboardTab.Controls.Add(dashboardTitle);
             dashboardTab.Controls.Add(dashboardSummaryLabel);
             dashboardTab.Controls.Add(quickSalesBtn);
-            dashboardTab.Controls.Add(quickReceiptBtn);
-            dashboardTab.Controls.Add(stockPurchaseBtn);
+            dashboardTab.Controls.Add(quickPurchaseBtn);
+            dashboardTab.Controls.Add(quickEstimateBtn);
             dashboardTab.Controls.Add(stockReportBtn);
-            dashboardTab.Controls.Add(productManagementBtn);
             
             mainTabControl.TabPages.Add(dashboardTab);
         }
@@ -127,8 +124,9 @@ namespace BillingSoftware
             voucherTypeCombo.Size = new Size(200, 30);
             voucherTypeCombo.Font = new Font("Segoe UI", 10);
             voucherTypeCombo.Items.AddRange(new string[] { 
-                "Sales Voucher", "Receipt Voucher", "Payment Voucher", 
-                "Journal Voucher", "Estimate", "Stock Purchase Voucher"
+                "Sales Voucher", 
+                "Purchase Voucher",
+                "Estimate Voucher"
             });
             voucherTypeCombo.SelectedIndex = 0;
             
@@ -155,42 +153,83 @@ namespace BillingSoftware
             LoadVouchersData();
         }
 
+        private void CreateProductsTab()
+        {
+            TabPage productsTab = new TabPage("📦 Products");
+            productsTab.BackColor = lightBg;
+            
+            Label productsTitle = new Label();
+            productsTitle.Text = "Product Management";
+            productsTitle.Font = new Font("Segoe UI", 16, FontStyle.Bold);
+            productsTitle.ForeColor = darkText;
+            productsTitle.Location = new Point(20, 20);
+            productsTitle.Size = new Size(300, 30);
+            productsTab.Controls.Add(productsTitle);
+            
+            // Products Grid
+            DataGridView productsGrid = new DataGridView();
+            productsGrid.Location = new Point(20, 70);
+            productsGrid.Size = new Size(900, 400);
+            productsGrid.BackgroundColor = Color.White;
+            productsGrid.BorderStyle = BorderStyle.None;
+            productsGrid.Font = new Font("Segoe UI", 9);
+            productsGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            productsGrid.ReadOnly = true;
+            productsTab.Controls.Add(productsGrid);
+            
+            // Buttons
+            Button addProductBtn = CreateModernButton("➕ Add Product", primaryGreen, new Point(20, 490));
+            addProductBtn.Click += (s, e) => ShowAddProductForm();
+            productsTab.Controls.Add(addProductBtn);
+            
+            Button refreshProductsBtn = CreateModernButton("🔄 Refresh", primaryBlue, new Point(180, 490));
+            refreshProductsBtn.Click += (s, e) => LoadProductsData(productsGrid);
+            productsTab.Controls.Add(refreshProductsBtn);
+            
+            mainTabControl.TabPages.Add(productsTab);
+            LoadProductsData(productsGrid);
+        }
+
         private void CreateReportsTab()
         {
-            TabPage reportsTab = new TabPage("📈 Reports");
+            TabPage reportsTab = new TabPage("📈 Stock Reports");
             reportsTab.BackColor = lightBg;
             reportsTab.Padding = new Padding(20);
+
+            // Title
+            Label reportsTitle = new Label();
+            reportsTitle.Text = "Stock Movement Reports";
+            reportsTitle.Font = new Font("Segoe UI", 16, FontStyle.Bold);
+            reportsTitle.ForeColor = darkText;
+            reportsTitle.Location = new Point(20, 20);
+            reportsTitle.Size = new Size(300, 30);
+            reportsTab.Controls.Add(reportsTitle);
 
             // Report type selection
             Label reportTypeLabel = new Label();
             reportTypeLabel.Text = "Report Type:";
             reportTypeLabel.Font = new Font("Segoe UI", 11, FontStyle.Bold);
             reportTypeLabel.ForeColor = darkText;
-            reportTypeLabel.Location = new Point(20, 20);
+            reportTypeLabel.Location = new Point(20, 70);
             reportTypeLabel.Size = new Size(100, 25);
             reportsTab.Controls.Add(reportTypeLabel);
 
             ComboBox reportTypeCombo = new ComboBox();
-            reportTypeCombo.Location = new Point(130, 18);
+            reportTypeCombo.Location = new Point(130, 68);
             reportTypeCombo.Size = new Size(200, 30);
             reportTypeCombo.Font = new Font("Segoe UI", 10);
             reportTypeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
             reportTypeCombo.Items.AddRange(new string[] { 
                 "📊 Daily Stock Report",
                 "📈 Monthly Stock Report", 
-                "📅 Yearly Stock Summary",
-                "💰 Sales Report",
-                "💸 Financial Report",
-                "📦 Stock Valuation Report",
-                "🚨 Low Stock Alert Report"
+                "📅 Yearly Stock Summary"
             });
             reportTypeCombo.SelectedIndex = 0;
-            reportTypeCombo.SelectedIndexChanged += (s, e) => UpdateDateControls();
             reportsTab.Controls.Add(reportTypeCombo);
 
-            // Date selection panel
+            // Date controls panel
             Panel datePanel = new Panel();
-            datePanel.Location = new Point(350, 15);
+            datePanel.Location = new Point(350, 65);
             datePanel.Size = new Size(400, 40);
             datePanel.BackColor = Color.Transparent;
 
@@ -225,7 +264,10 @@ namespace BillingSoftware
             ComboBox monthCombo = new ComboBox();
             monthCombo.Location = new Point(55, 3);
             monthCombo.Size = new Size(100, 25);
-            monthCombo.Items.AddRange(new string[] { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" });
+            monthCombo.Items.AddRange(new string[] { 
+                "January", "February", "March", "April", "May", "June", 
+                "July", "August", "September", "October", "November", "December" 
+            });
             monthCombo.SelectedIndex = DateTime.Now.Month - 1;
             monthCombo.Visible = false;
             monthCombo.Name = "monthCombo";
@@ -251,58 +293,46 @@ namespace BillingSoftware
             yearPicker.Name = "yearPicker";
             datePanel.Controls.Add(yearPicker);
 
-            // Date range controls
-            Label fromLabel = new Label();
-            fromLabel.Text = "From:";
-            fromLabel.Font = new Font("Segoe UI", 10);
-            fromLabel.ForeColor = darkText;
-            fromLabel.Location = new Point(0, 5);
-            fromLabel.Size = new Size(40, 20);
-            fromLabel.Visible = false;
-            fromLabel.Name = "fromLabel";
-            datePanel.Controls.Add(fromLabel);
+            // Yearly controls
+            Label yearOnlyLabel = new Label();
+            yearOnlyLabel.Text = "Year:";
+            yearOnlyLabel.Font = new Font("Segoe UI", 10);
+            yearOnlyLabel.ForeColor = darkText;
+            yearOnlyLabel.Location = new Point(0, 5);
+            yearOnlyLabel.Size = new Size(35, 20);
+            yearOnlyLabel.Visible = false;
+            yearOnlyLabel.Name = "yearOnlyLabel";
+            datePanel.Controls.Add(yearOnlyLabel);
 
-            DateTimePicker fromDatePicker = new DateTimePicker();
-            fromDatePicker.Location = new Point(45, 3);
-            fromDatePicker.Size = new Size(100, 25);
-            fromDatePicker.Value = DateTime.Now.AddDays(-30);
-            fromDatePicker.Visible = false;
-            fromDatePicker.Name = "fromPicker";
-            datePanel.Controls.Add(fromDatePicker);
-
-            Label toLabel = new Label();
-            toLabel.Text = "To:";
-            toLabel.Font = new Font("Segoe UI", 10);
-            toLabel.ForeColor = darkText;
-            toLabel.Location = new Point(155, 5);
-            toLabel.Size = new Size(25, 20);
-            toLabel.Visible = false;
-            toLabel.Name = "toLabel";
-            datePanel.Controls.Add(toLabel);
-
-            DateTimePicker toDatePicker = new DateTimePicker();
-            toDatePicker.Location = new Point(185, 3);
-            toDatePicker.Size = new Size(100, 25);
-            toDatePicker.Value = DateTime.Now;
-            toDatePicker.Visible = false;
-            toDatePicker.Name = "toPicker";
-            datePanel.Controls.Add(toDatePicker);
+            NumericUpDown yearOnlyPicker = new NumericUpDown();
+            yearOnlyPicker.Location = new Point(45, 3);
+            yearOnlyPicker.Size = new Size(60, 25);
+            yearOnlyPicker.Minimum = 2020;
+            yearOnlyPicker.Maximum = 2030;
+            yearOnlyPicker.Value = DateTime.Now.Year;
+            yearOnlyPicker.Visible = false;
+            yearOnlyPicker.Name = "yearOnlyPicker";
+            datePanel.Controls.Add(yearOnlyPicker);
 
             reportsTab.Controls.Add(datePanel);
 
-            // Action buttons
-            Button generateReportBtn = CreateModernButton("📄 Generate Report", primaryGreen, new Point(20, 70));
-            generateReportBtn.Click += (s, e) => GenerateStockReport(reportTypeCombo.SelectedItem.ToString(), datePanel);
+            // Update controls based on report type
+            reportTypeCombo.SelectedIndexChanged += (s, e) => UpdateReportControls(datePanel, reportTypeCombo.SelectedItem.ToString());
+
+            // Generate Button
+            Button generateReportBtn = CreateModernButton("📄 Generate Report", primaryGreen, new Point(770, 65));
+            generateReportBtn.Click += (s, e) => GenerateStockReport(datePanel, reportTypeCombo.SelectedItem.ToString());
             reportsTab.Controls.Add(generateReportBtn);
 
-            Button exportBtn = CreateModernButton("📤 Export to CSV", primaryBlue, new Point(200, 70));
+            // Export Button
+            Button exportBtn = CreateModernButton("📤 Export to CSV", primaryBlue, new Point(650, 110));
             exportBtn.Click += (s, e) => ExportStockReport();
             reportsTab.Controls.Add(exportBtn);
 
             // Report display area
             DataGridView reportsGridView = new DataGridView();
-            reportsGridView.Location = new Point(20, 120);
-            reportsGridView.Size = new Size(900, 400);
+            reportsGridView.Location = new Point(20, 150);
+            reportsGridView.Size = new Size(900, 350);
             reportsGridView.BackgroundColor = Color.White;
             reportsGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             reportsGridView.ReadOnly = true;
@@ -319,79 +349,28 @@ namespace BillingSoftware
             Label reportSummaryLabel = new Label();
             reportSummaryLabel.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             reportSummaryLabel.ForeColor = darkText;
-            reportSummaryLabel.Location = new Point(20, 530);
+            reportSummaryLabel.Location = new Point(20, 510);
             reportSummaryLabel.Size = new Size(900, 30);
             reportSummaryLabel.TextAlign = ContentAlignment.MiddleLeft;
             reportSummaryLabel.Name = "summaryLabel";
             reportsTab.Controls.Add(reportSummaryLabel);
 
             mainTabControl.TabPages.Add(reportsTab);
+            
+            // Initialize controls
+            UpdateReportControls(datePanel, reportTypeCombo.SelectedItem.ToString());
         }
 
-        private void CreateUsersTab()
+        private void UpdateReportControls(Panel datePanel, string reportType)
         {
-            TabPage usersTab = new TabPage("👥 Users");
-            usersTab.BackColor = lightBg;
-            
-            Label usersTitle = new Label();
-            usersTitle.Text = "User Management";
-            usersTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
-            usersTitle.Location = new Point(20, 20);
-            usersTitle.Size = new Size(200, 30);
-            usersTitle.ForeColor = darkText;
-            
-            Button addUserBtn = CreateModernButton("Add New User", primaryGreen, new Point(20, 70));
-            Button manageUsersBtn = CreateModernButton("Manage Users", primaryBlue, new Point(180, 70));
-            
-            addUserBtn.Click += (s, e) => ShowUserManagementForm();
-            manageUsersBtn.Click += (s, e) => ShowUserManagementForm();
-            
-            usersTab.Controls.Add(usersTitle);
-            usersTab.Controls.Add(addUserBtn);
-            usersTab.Controls.Add(manageUsersBtn);
-            
-            mainTabControl.TabPages.Add(usersTab);
-        }
-
-        private void CreateSettingsTab()
-        {
-            TabPage settingsTab = new TabPage("⚙️ Settings");
-            settingsTab.BackColor = lightBg;
-            
-            Label settingsTitle = new Label();
-            settingsTitle.Text = "Application Settings";
-            settingsTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
-            settingsTitle.Location = new Point(20, 20);
-            settingsTitle.Size = new Size(200, 30);
-            settingsTitle.ForeColor = darkText;
-            
-            Button companySettingsBtn = CreateModernButton("Company Settings", primaryBlue, new Point(20, 70));
-            Button backupBtn = CreateModernButton("Backup Data", primaryGreen, new Point(200, 70));
-            
-            companySettingsBtn.Click += (s, e) => ShowSettingsForm();
-            backupBtn.Click += (s, e) => BackupDatabase();
-            
-            settingsTab.Controls.Add(settingsTitle);
-            settingsTab.Controls.Add(companySettingsBtn);
-            settingsTab.Controls.Add(backupBtn);
-            
-            mainTabControl.TabPages.Add(settingsTab);
-        }
-
-        private void UpdateDateControls()
-        {
-            var reportsTab = mainTabControl.TabPages[2];
-            var datePanel = reportsTab.Controls.OfType<Panel>().First();
-            var reportTypeCombo = reportsTab.Controls.OfType<ComboBox>().First();
-
             // Hide all controls first
             foreach (Control control in datePanel.Controls)
             {
                 control.Visible = false;
             }
 
-            // Show relevant controls based on report type
-            switch (reportTypeCombo.SelectedItem.ToString())
+            // Show relevant controls
+            switch (reportType)
             {
                 case "📊 Daily Stock Report":
                     datePanel.Controls.Find("dailyPicker", true)[0].Visible = true;
@@ -404,89 +383,52 @@ namespace BillingSoftware
                     datePanel.Controls.Find("yearPicker", true)[0].Visible = true;
                     break;
                 case "📅 Yearly Stock Summary":
-                    datePanel.Controls.Find("yearLabel", true)[0].Visible = true;
-                    datePanel.Controls.Find("yearPicker", true)[0].Visible = true;
-                    break;
-                case "💰 Sales Report":
-                case "💸 Financial Report":
-                    datePanel.Controls.Find("fromLabel", true)[0].Visible = true;
-                    datePanel.Controls.Find("fromPicker", true)[0].Visible = true;
-                    datePanel.Controls.Find("toLabel", true)[0].Visible = true;
-                    datePanel.Controls.Find("toPicker", true)[0].Visible = true;
-                    break;
-                case "📦 Stock Valuation Report":
-                case "🚨 Low Stock Alert Report":
-                    // No date controls needed for these reports
+                    datePanel.Controls.Find("yearOnlyLabel", true)[0].Visible = true;
+                    datePanel.Controls.Find("yearOnlyPicker", true)[0].Visible = true;
                     break;
             }
         }
 
-        private void GenerateStockReport(string reportType, Panel datePanel)
+        private void GenerateStockReport(Panel datePanel, string reportType)
         {
             try
             {
-                var reportsTab = mainTabControl.TabPages[2];
+                var reportsTab = mainTabControl.TabPages[3];
                 var reportsGridView = reportsTab.Controls.Find("reportsGridView", true)[0] as DataGridView;
                 var reportSummaryLabel = reportsTab.Controls.Find("summaryLabel", true)[0] as Label;
 
-                Report report = null;
-                List<StockMovementItem> stockMovementItems = null;
+                List<SimpleStockReportItem> stockItems = null;
 
                 switch (reportType)
                 {
                     case "📊 Daily Stock Report":
                         var dailyDate = (datePanel.Controls.Find("dailyPicker", true)[0] as DateTimePicker).Value;
-                        stockMovementItems = reportManager.GenerateStockMovementReport(dailyDate, dailyDate);
+                        stockItems = reportManager.GenerateDailyStockReport(dailyDate);
                         break;
                     case "📈 Monthly Stock Report":
                         var month = (datePanel.Controls.Find("monthCombo", true)[0] as ComboBox).SelectedIndex + 1;
                         var year = (int)(datePanel.Controls.Find("yearPicker", true)[0] as NumericUpDown).Value;
-                        var fromDate = new DateTime(year, month, 1);
-                        var toDate = fromDate.AddMonths(1).AddDays(-1);
-                        stockMovementItems = reportManager.GenerateStockMovementReport(fromDate, toDate);
+                        stockItems = reportManager.GenerateMonthlyStockReport(year, month);
                         break;
                     case "📅 Yearly Stock Summary":
-                        var reportYear = (int)(datePanel.Controls.Find("yearPicker", true)[0] as NumericUpDown).Value;
-                        stockMovementItems = reportManager.GenerateStockMovementReport(
-                            new DateTime(reportYear, 1, 1), 
-                            new DateTime(reportYear, 12, 31));
+                        var reportYear = (int)(datePanel.Controls.Find("yearOnlyPicker", true)[0] as NumericUpDown).Value;
+                        stockItems = reportManager.GenerateYearlyStockReport(reportYear);
                         break;
-                    case "💰 Sales Report":
-                        var salesFromDate = (datePanel.Controls.Find("fromPicker", true)[0] as DateTimePicker).Value;
-                        var salesToDate = (datePanel.Controls.Find("toPicker", true)[0] as DateTimePicker).Value;
-                        report = reportManager.GenerateSalesReport(salesFromDate, salesToDate);
-                        break;
-                    case "💸 Financial Report":
-                        var finFromDate = (datePanel.Controls.Find("fromPicker", true)[0] as DateTimePicker).Value;
-                        var finToDate = (datePanel.Controls.Find("toPicker", true)[0] as DateTimePicker).Value;
-                        report = reportManager.GenerateFinancialReport(finFromDate, finToDate);
-                        break;
-                    case "📦 Stock Valuation Report":
-                        report = reportManager.GenerateStockValuationReport();
-                        break;
-                    case "🚨 Low Stock Alert Report":
-                        ShowLowStockReport();
-                        return;
                 }
 
-                if (stockMovementItems != null)
+                if (stockItems != null && stockItems.Count > 0)
                 {
-                    DisplayStockMovementReport(reportsGridView, stockMovementItems);
-                    var totalItems = stockMovementItems.Count;
-                    var totalClosingValue = stockMovementItems.Sum(x => x.Value);
-                    reportSummaryLabel.Text = $"{reportType} | Total Items: {totalItems} | Total Closing Value: ₹{totalClosingValue:N2}";
+                    DisplayStockReport(reportsGridView, stockItems);
+                    var totalItems = stockItems.Count;
+                    reportSummaryLabel.Text = $"{reportType} | Total Items: {totalItems}";
                     
                     MessageBox.Show($"✅ {reportType} generated successfully!\n\nItems: {totalItems}", 
                                   "Report Generated", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                else if (report != null)
+                else
                 {
-                    reportsGridView.DataSource = report.Items;
-                    reportSummaryLabel.Text = $"{report.Title} | Generated: {report.GeneratedDate:HH:mm:ss} | Total Records: {report.TotalRecords} | Total Amount: ₹{report.TotalAmount:N2}";
-                    FormatReportGrid(reportsGridView, report.Type);
-                    
-                    MessageBox.Show($"✅ {reportType} generated successfully!\n\nRecords: {report.TotalRecords}", 
-                                  "Report Generated", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    reportsGridView.DataSource = null;
+                    reportSummaryLabel.Text = "No data found for the selected period.";
                 }
             }
             catch (Exception ex)
@@ -496,209 +438,42 @@ namespace BillingSoftware
             }
         }
 
-        // Method to display stock movement report in the desired format
-        private void DisplayStockMovementReport(DataGridView grid, List<StockMovementItem> stockItems)
+        private void DisplayStockReport(DataGridView grid, List<SimpleStockReportItem> items)
         {
-            // Create a DataTable for proper data binding
-            var dataTable = new System.Data.DataTable();
-            
-            // Add columns
-            dataTable.Columns.Add("Item", typeof(string));
+            var dataTable = new DataTable();
+            dataTable.Columns.Add("Product", typeof(string));
             dataTable.Columns.Add("Code", typeof(string));
-            dataTable.Columns.Add("Unit", typeof(string));
-            dataTable.Columns.Add("OpeningBalance", typeof(decimal));
-            dataTable.Columns.Add("Bought", typeof(decimal));
+            dataTable.Columns.Add("Opening", typeof(decimal));
+            dataTable.Columns.Add("Purchased", typeof(decimal));
             dataTable.Columns.Add("Sold", typeof(decimal));
-            dataTable.Columns.Add("ClosingBalance", typeof(decimal));
-            dataTable.Columns.Add("Value", typeof(decimal));
+            dataTable.Columns.Add("Closing", typeof(decimal));
+            dataTable.Columns.Add("Unit", typeof(string));
             
-            // Add rows
-            foreach (var item in stockItems)
+            foreach (var item in items)
             {
                 dataTable.Rows.Add(
                     item.Item,
                     item.Code,
-                    item.Unit,
                     item.OpeningBalance,
-                    item.Bought,
+                    item.Purchased,
                     item.Sold,
                     item.ClosingBalance,
-                    item.Value
+                    item.Unit
                 );
             }
             
-            // Bind to grid
             grid.DataSource = dataTable;
             
-            // Customize column headers
-            grid.Columns["Item"].HeaderText = "Item";
-            grid.Columns["Code"].HeaderText = "Code";
-            grid.Columns["Unit"].HeaderText = "Unit";
-            grid.Columns["OpeningBalance"].HeaderText = "Opening Balance";
-            grid.Columns["Bought"].HeaderText = "Bought";
-            grid.Columns["Sold"].HeaderText = "Sold";
-            grid.Columns["ClosingBalance"].HeaderText = "Closing Balance";
-            grid.Columns["Value"].HeaderText = "Value (₹)";
-            
-            // Format numeric columns
+            // Format columns
             foreach (DataGridViewColumn column in grid.Columns)
             {
-                if (column.Name == "OpeningBalance" || column.Name == "Bought" || 
-                    column.Name == "Sold" || column.Name == "ClosingBalance" || column.Name == "Value")
+                if (column.Name == "Opening" || column.Name == "Purchased" || 
+                    column.Name == "Sold" || column.Name == "Closing")
                 {
                     column.DefaultCellStyle.Format = "N2";
                     column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
                 }
             }
-            
-            // Auto-size columns for better appearance
-            grid.AutoResizeColumns();
-        }
-
-        private void FormatReportGrid(DataGridView grid, string reportType)
-        {
-            foreach (DataGridViewColumn column in grid.Columns)
-            {
-                if (column.Name == "Amount" || column.Name.EndsWith("Amount"))
-                {
-                    column.DefaultCellStyle.Format = "N2";
-                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-                    column.DefaultCellStyle.ForeColor = Color.Green;
-                }
-                else if (column.Name == "Quantity" || column.Name.EndsWith("Quantity"))
-                {
-                    column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-                }
-                else if (column.Name == "Date" || column.Name.EndsWith("Date"))
-                {
-                    column.DefaultCellStyle.Format = "dd-MMM-yyyy";
-                }
-            }
-        }
-
-        private void ShowLowStockReport()
-        {
-            var lowStockProducts = reportManager.GetLowStockProducts();
-            
-            string reportText = "🚨 LOW STOCK ALERT REPORT\n\n";
-            reportText += "The following products are below minimum stock levels:\n\n";
-            
-            foreach (var product in lowStockProducts)
-            {
-                reportText += $"📦 {product.Name} ({product.Code})\n";
-                reportText += $"   Current Stock: {product.Stock} {product.Unit}\n";
-                reportText += $"   Minimum Required: {product.MinStock} {product.Unit}\n";
-                reportText += $"   Shortage: {product.MinStock - product.Stock} {product.Unit}\n";
-                reportText += $"   Value: ₹{product.Price * product.Stock:N2}\n\n";
-            }
-            
-            reportText += $"Total Low Stock Items: {lowStockProducts.Count}\n";
-            reportText += $"Action Required: Please restock these items immediately!";
-            
-            MessageBox.Show(reportText, "Low Stock Alert", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void ExportStockReport()
-        {
-            var reportsTab = mainTabControl.TabPages[2];
-            var grid = reportsTab.Controls.Find("reportsGridView", true)[0] as DataGridView;
-            
-            if (grid.DataSource == null)
-            {
-                MessageBox.Show("Please generate a report first!", "No Data", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            try
-            {
-                using (SaveFileDialog saveDialog = new SaveFileDialog())
-                {
-                    saveDialog.Filter = "CSV Files (*.csv)|*.csv";
-                    saveDialog.FileName = $"Report_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
-
-                    if (saveDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        ExportToCsv(grid, saveDialog.FileName);
-                        MessageBox.Show($"Report exported successfully to:\n{saveDialog.FileName}", 
-                                      "Export Complete", 
-                                      MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Export failed: {ex.Message}", "Error", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private void ExportToCsv(DataGridView grid, string filename)
-        {
-            using (System.IO.StreamWriter writer = new System.IO.StreamWriter(filename))
-            {
-                // Write headers
-                var headers = new System.Text.StringBuilder();
-                foreach (DataGridViewColumn column in grid.Columns)
-                {
-                    headers.Append(column.HeaderText + ",");
-                }
-                writer.WriteLine(headers.ToString().TrimEnd(','));
-
-                // Write data
-                foreach (DataGridViewRow row in grid.Rows)
-                {
-                    if (!row.IsNewRow)
-                    {
-                        var rowData = new System.Text.StringBuilder();
-                        foreach (DataGridViewCell cell in row.Cells)
-                        {
-                            rowData.Append(cell.Value?.ToString() + ",");
-                        }
-                        writer.WriteLine(rowData.ToString().TrimEnd(','));
-                    }
-                }
-            }
-        }
-
-        private Button CreateModernButton(string text, Color color, Point location)
-        {
-            Button btn = new Button();
-            btn.Text = text;
-            btn.BackColor = color;
-            btn.ForeColor = Color.White;
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 0;
-            btn.Font = new Font("Segoe UI", 10);
-            btn.Size = new Size(180, 35);
-            btn.Location = location;
-            btn.Cursor = Cursors.Hand;
-            
-            return btn;
-        }
-
-        private void LoadDashboardData()
-        {
-            int totalVouchers = voucherManager.GetVouchersCount();
-            decimal totalSales = voucherManager.GetTotalSales();
-            int lowStockItems = reportManager.GetLowStockCount();
-            int activeUsers = userManager.GetActiveUsersCount();
-            
-            dashboardSummaryLabel.Text = $@"📊 BUSINESS SUMMARY
-
-Total Vouchers: {totalVouchers}
-Total Sales: ₹{totalSales:N2}
-Low Stock Items: {lowStockItems}
-Active Users: {activeUsers}
-
-Last Updated: {DateTime.Now:HH:mm:ss}";
-        }
-
-        private void LoadVouchersData()
-        {
-            var vouchers = voucherManager.GetAllVouchers();
-            vouchersGridView.DataSource = vouchers;
-            vouchersGridView.Refresh();
         }
 
         private void CreateSelectedVoucher(string voucherType)
@@ -708,20 +483,11 @@ Last Updated: {DateTime.Now:HH:mm:ss}";
                 case "Sales Voucher":
                     ShowSalesForm();
                     break;
-                case "Receipt Voucher":
-                    ShowReceiptForm();
-                    break;
-                case "Payment Voucher":
-                    ShowPaymentForm();
-                    break;
-                case "Journal Voucher":
-                    ShowJournalForm();
-                    break;
-                case "Estimate":
-                    ShowEstimateForm();
-                    break;
-                case "Stock Purchase Voucher":
+                case "Purchase Voucher":
                     ShowStockPurchaseForm();
+                    break;
+                case "Estimate Voucher":
+                    ShowEstimateForm();
                     break;
             }
         }
@@ -734,26 +500,10 @@ Last Updated: {DateTime.Now:HH:mm:ss}";
             LoadDashboardData();
         }
 
-        private void ShowReceiptForm()
+        private void ShowStockPurchaseForm()
         {
-            Forms.Vouchers.ReceiptForm receiptForm = new Forms.Vouchers.ReceiptForm();
-            receiptForm.ShowDialog();
-            LoadVouchersData();
-            LoadDashboardData();
-        }
-
-        private void ShowPaymentForm()
-        {
-            Forms.Vouchers.PaymentForm paymentForm = new Forms.Vouchers.PaymentForm();
-            paymentForm.ShowDialog();
-            LoadVouchersData();
-            LoadDashboardData();
-        }
-
-        private void ShowJournalForm()
-        {
-            Forms.Vouchers.JournalForm journalForm = new Forms.Vouchers.JournalForm();
-            journalForm.ShowDialog();
+            Forms.Vouchers.StockPurchaseForm stockForm = new Forms.Vouchers.StockPurchaseForm();
+            stockForm.ShowDialog();
             LoadVouchersData();
             LoadDashboardData();
         }
@@ -766,55 +516,136 @@ Last Updated: {DateTime.Now:HH:mm:ss}";
             LoadDashboardData();
         }
 
-        private void ShowStockPurchaseForm()
+        private void ShowAddProductForm()
         {
-            Forms.Vouchers.StockPurchaseForm stockForm = new Forms.Vouchers.StockPurchaseForm();
-            stockForm.ShowDialog();
-            LoadVouchersData();
-            LoadDashboardData();
+            using (var addForm = new AddProductForm())
+            {
+                if (addForm.ShowDialog() == DialogResult.OK)
+                {
+                    var productsTab = mainTabControl.TabPages[2];
+                    var productsGrid = productsTab.Controls.OfType<DataGridView>().First();
+                    LoadProductsData(productsGrid);
+                }
+            }
         }
 
-        private void ShowProductManagementForm()
-        {
-            Forms.ProductManagementForm productForm = new Forms.ProductManagementForm();
-            productForm.ShowDialog();
-            LoadDashboardData();
-        }
-
-        private void ShowUserManagementForm()
-        {
-            Forms.UserManagementForm userForm = new Forms.UserManagementForm();
-            userForm.ShowDialog();
-            LoadDashboardData();
-        }
-
-        private void ShowSettingsForm()
-        {
-            Forms.SettingsForm settingsForm = new Forms.SettingsForm();
-            settingsForm.ShowDialog();
-        }
-
-        private void BackupDatabase()
+        private void LoadProductsData(DataGridView grid)
         {
             try
             {
-                using (var saveDialog = new SaveFileDialog())
+                var products = dbManager.GetAllProducts();
+                grid.DataSource = products;
+                
+                foreach (DataGridViewColumn column in grid.Columns)
                 {
-                    saveDialog.Filter = "SQLite Database Files (*.db)|*.db|All files (*.*)|*.*";
-                    saveDialog.FileName = $"billing_backup_{DateTime.Now:yyyyMMdd_HHmmss}.db";
-
-                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    if (column.Name == "Price" || column.Name == "Stock" || column.Name == "MinStock")
                     {
-                        System.IO.File.Copy("billing.db", saveDialog.FileName, true);
-                        MessageBox.Show($"Backup created successfully!\nLocation: {saveDialog.FileName}", 
-                                      "Backup Complete", 
-                                      MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        column.DefaultCellStyle.Format = "N2";
+                        column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Backup failed: {ex.Message}", "Error", 
+                MessageBox.Show($"Error loading products: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private Button CreateModernButton(string text, Color color, Point location)
+        {
+            Button btn = new Button();
+            btn.Text = text;
+            btn.BackColor = color;
+            btn.ForeColor = Color.White;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderSize = 0;
+            btn.Font = new Font("Segoe UI", 10);
+            btn.Size = new Size(120, 35);
+            btn.Location = location;
+            btn.Cursor = Cursors.Hand;
+            return btn;
+        }
+
+        private void LoadDashboardData()
+        {
+            try
+            {
+                string stats = dbManager.GetDatabaseStats();
+                dashboardSummaryLabel.Text = $"📊 Dashboard Statistics:\n\n{stats}";
+            }
+            catch (Exception ex)
+            {
+                dashboardSummaryLabel.Text = $"Error loading dashboard data: {ex.Message}";
+            }
+        }
+
+        private void LoadVouchersData()
+        {
+            try
+            {
+                var dataTable = new DataTable();
+                // REMOVED amount from SELECT to hide price
+                string sql = "SELECT number, type, date, party, description FROM vouchers WHERE status = 'Active' ORDER BY date DESC";
+                
+                using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+                using (var adapter = new SQLiteDataAdapter(cmd))
+                {
+                    adapter.Fill(dataTable);
+                }
+                
+                vouchersGridView.DataSource = dataTable;
+                
+                // No amount column to format since we removed it
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading vouchers: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportStockReport()
+        {
+            try
+            {
+                SaveFileDialog saveFileDialog = new SaveFileDialog();
+                saveFileDialog.Filter = "CSV Files (*.csv)|*.csv";
+                saveFileDialog.Title = "Export Stock Report";
+                
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    var reportsTab = mainTabControl.TabPages[3];
+                    var reportsGridView = reportsTab.Controls.Find("reportsGridView", true)[0] as DataGridView;
+                    
+                    if (reportsGridView.DataSource != null)
+                    {
+                        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                        
+                        // Headers
+                        var headers = reportsGridView.Columns.Cast<DataGridViewColumn>();
+                        sb.AppendLine(string.Join(",", headers.Select(column => $"\"{column.HeaderText}\"")));
+                        
+                        // Data
+                        foreach (DataGridViewRow row in reportsGridView.Rows)
+                        {
+                            if (!row.IsNewRow)
+                            {
+                                var cells = row.Cells.Cast<DataGridViewCell>();
+                                sb.AppendLine(string.Join(",", cells.Select(cell => $"\"{cell.Value}\"")));
+                            }
+                        }
+                        
+                        System.IO.File.WriteAllText(saveFileDialog.FileName, sb.ToString());
+                        
+                        MessageBox.Show($"Report exported successfully to: {saveFileDialog.FileName}", 
+                                      "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error exporting report: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

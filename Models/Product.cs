@@ -1,5 +1,3 @@
-using System;
-
 namespace BillingSoftware.Models
 {
     public class Product
@@ -12,12 +10,13 @@ namespace BillingSoftware.Models
         public string Unit { get; set; } = "PCS";
         public decimal MinStock { get; set; } = 10;
         public DateTime CreatedDate { get; set; } = DateTime.Now;
-
-        public Product()
-        {
-            Unit = "PCS";
-            CreatedDate = DateTime.Now;
-            MinStock = 10;
-        }
+        
+        // Additional properties for estimates
+        public decimal? DiscountPercent { get; set; } = 0;
+        public decimal? TaxPercent { get; set; } = 0;
+        
+        // Calculated properties
+        public decimal SellingPrice => Price * (1 - (DiscountPercent ?? 0) / 100);
+        public decimal PriceWithTax => SellingPrice * (1 + (TaxPercent ?? 0) / 100);
     }
 }

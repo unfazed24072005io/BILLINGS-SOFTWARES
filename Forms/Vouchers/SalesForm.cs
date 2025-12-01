@@ -13,25 +13,25 @@ namespace BillingSoftware.Forms.Vouchers
         private VoucherManager voucherManager;
         private DatabaseManager dbManager;
         
-        private TextBox voucherNumberTxt, partyTxt, totalAmountTxt;
+        private TextBox voucherNumberTxt, customerTxt, totalAmountTxt;
         private DateTimePicker datePicker;
         private DataGridView itemsGrid;
         private Button saveBtn, clearBtn, addItemBtn, removeItemBtn;
-        private List<VoucherItem> saleItems;
+        private List<SaleItem> saleItems;
 
         public SalesForm()
         {
             InitializeComponent();
             voucherManager = new VoucherManager();
             dbManager = new DatabaseManager();
-            saleItems = new List<VoucherItem>();
+            saleItems = new List<SaleItem>();
             CreateSalesFormUI();
         }
 
         private void CreateSalesFormUI()
         {
             this.Text = "Sales Voucher";
-            this.Size = new Size(800, 600);
+            this.Size = new Size(800, 550);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(248, 249, 250);
 
@@ -49,15 +49,14 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Text = "Sales Details";
             mainGroup.Font = new Font("Segoe UI", 10);
             mainGroup.Location = new Point(20, 70);
-            mainGroup.Size = new Size(750, 450);
+            mainGroup.Size = new Size(750, 400);
             mainGroup.BackColor = Color.White;
 
             // Voucher Number
-            CreateLabel("Voucher Number:", 20, 40, mainGroup);
+            CreateLabel("Sales No:", 20, 40, mainGroup);
             voucherNumberTxt = CreateTextBox(150, 40, 200, mainGroup);
             voucherNumberTxt.Text = voucherManager.GenerateVoucherNumber("Sales");
             voucherNumberTxt.ReadOnly = true;
-            voucherNumberTxt.BackColor = Color.FromArgb(240, 240, 240);
 
             // Date
             CreateLabel("Date:", 20, 80, mainGroup);
@@ -68,12 +67,12 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Controls.Add(datePicker);
 
             // Customer
-            CreateLabel("Customer Name:", 20, 120, mainGroup);
-            partyTxt = CreateTextBox(150, 120, 250, mainGroup);
+            CreateLabel("Customer:", 20, 120, mainGroup);
+            customerTxt = CreateTextBox(150, 120, 250, mainGroup);
 
             // Total Amount
             CreateLabel("Total Amount:", 450, 120, mainGroup);
-            totalAmountTxt = CreateTextBox(550, 120, 150, mainGroup);
+            totalAmountTxt = CreateTextBox(570, 120, 150, mainGroup);
             totalAmountTxt.ReadOnly = true;
             totalAmountTxt.Text = "0.00";
             totalAmountTxt.Font = new Font("Segoe UI", 10, FontStyle.Bold);
@@ -82,23 +81,23 @@ namespace BillingSoftware.Forms.Vouchers
             // Items Grid
             itemsGrid = new DataGridView();
             itemsGrid.Location = new Point(20, 160);
-            itemsGrid.Size = new Size(710, 200);
+            itemsGrid.Size = new Size(710, 150);
             itemsGrid.BackgroundColor = Color.White;
             itemsGrid.AllowUserToAddRows = false;
             itemsGrid.RowHeadersVisible = false;
             
             // Add columns
             itemsGrid.Columns.Add("Product", "Product Name");
-            itemsGrid.Columns.Add("Quantity", "Quantity");
+            itemsGrid.Columns.Add("Quantity", "Qty");
             itemsGrid.Columns.Add("Unit", "Unit");
-            itemsGrid.Columns.Add("Price", "Unit Price");
-            itemsGrid.Columns.Add("Amount", "Total Amount");
+            itemsGrid.Columns.Add("Rate", "Rate");
+            itemsGrid.Columns.Add("Amount", "Amount");
             
             // Format columns
             itemsGrid.Columns["Quantity"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            itemsGrid.Columns["Price"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            itemsGrid.Columns["Rate"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             itemsGrid.Columns["Amount"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            itemsGrid.Columns["Price"].DefaultCellStyle.Format = "N2";
+            itemsGrid.Columns["Rate"].DefaultCellStyle.Format = "N2";
             itemsGrid.Columns["Amount"].DefaultCellStyle.Format = "N2";
             
             itemsGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -106,21 +105,21 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Controls.Add(itemsGrid);
 
             // Buttons for items
-            addItemBtn = CreateButton("➕ Add Item", Color.FromArgb(52, 152, 219), new Point(20, 370));
+            addItemBtn = CreateButton("➕ Add Item", Color.FromArgb(52, 152, 219), new Point(20, 320));
             addItemBtn.Click += AddItemBtn_Click;
             mainGroup.Controls.Add(addItemBtn);
 
-            removeItemBtn = CreateButton("➖ Remove Item", Color.FromArgb(231, 76, 60), new Point(150, 370));
+            removeItemBtn = CreateButton("➖ Remove Item", Color.FromArgb(231, 76, 60), new Point(150, 320));
             removeItemBtn.Click += RemoveItemBtn_Click;
             mainGroup.Controls.Add(removeItemBtn);
 
             this.Controls.Add(mainGroup);
 
             // Form Buttons
-            saveBtn = CreateButton("💾 Save Sales", Color.FromArgb(46, 204, 113), new Point(20, 540));
+            saveBtn = CreateButton("💾 Save Sales", Color.FromArgb(46, 204, 113), new Point(20, 490));
             saveBtn.Click += SaveBtn_Click;
 
-            clearBtn = CreateButton("🗑️ Clear", Color.FromArgb(149, 165, 166), new Point(150, 540));
+            clearBtn = CreateButton("🗑️ Clear", Color.FromArgb(149, 165, 166), new Point(150, 490));
             clearBtn.Click += ClearBtn_Click;
 
             this.Controls.Add(saveBtn);
@@ -164,7 +163,6 @@ namespace BillingSoftware.Forms.Vouchers
 
         private void AddItemBtn_Click(object sender, EventArgs e)
         {
-            // Show dialog to add sale item
             using (var itemForm = new SalesItemForm())
             {
                 if (itemForm.ShowDialog() == DialogResult.OK)
@@ -173,7 +171,7 @@ namespace BillingSoftware.Forms.Vouchers
                     saleItems.Add(item);
                     
                     // Add to grid
-                    itemsGrid.Rows.Add(item.ProductName, item.Quantity, "PCS", item.UnitPrice, item.TotalAmount);
+                    itemsGrid.Rows.Add(item.ProductName, item.Quantity, item.Unit, item.Rate, item.Amount);
                     
                     // Update total amount
                     UpdateTotalAmount();
@@ -185,18 +183,13 @@ namespace BillingSoftware.Forms.Vouchers
         {
             if (itemsGrid.SelectedRows.Count > 0)
             {
-                var selectedIndex = itemsGrid.SelectedRows[0].Index;
+                int selectedIndex = itemsGrid.SelectedRows[0].Index;
                 if (selectedIndex < saleItems.Count)
                 {
                     saleItems.RemoveAt(selectedIndex);
                     itemsGrid.Rows.RemoveAt(selectedIndex);
                     UpdateTotalAmount();
                 }
-            }
-            else
-            {
-                MessageBox.Show("Please select an item to remove.", "Selection Required", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -205,46 +198,78 @@ namespace BillingSoftware.Forms.Vouchers
             decimal total = 0;
             foreach (var item in saleItems)
             {
-                total += item.TotalAmount;
+                total += item.Amount;
             }
             totalAmountTxt.Text = total.ToString("N2");
         }
 
         private void SaveBtn_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(partyTxt.Text) || saleItems.Count == 0)
+            if (string.IsNullOrWhiteSpace(customerTxt.Text))
             {
-                MessageBox.Show("Please enter customer name and add at least one item!", "Validation Error", 
+                MessageBox.Show("Please enter customer name!", "Validation Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
+            if (saleItems.Count == 0)
+            {
+                MessageBox.Show("Please add at least one item!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Check stock availability
+            foreach (var item in saleItems)
+            {
+                var product = dbManager.GetProductByName(item.ProductName);
+                if (product == null)
+                {
+                    MessageBox.Show($"Product '{item.ProductName}' not found!", "Error", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                
+                if (product.Stock < item.Quantity)
+                {
+                    MessageBox.Show($"Insufficient stock for '{item.ProductName}'\n" +
+                                  $"Available: {product.Stock}, Requested: {item.Quantity}", 
+                                  "Stock Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
             try
             {
-                // Create sales voucher with items
+                // Create voucher
                 var salesVoucher = new Voucher
                 {
                     Type = "Sales",
                     Number = voucherNumberTxt.Text,
                     Date = datePicker.Value,
-                    Party = partyTxt.Text.Trim(),
+                    Party = customerTxt.Text.Trim(),
                     Amount = decimal.Parse(totalAmountTxt.Text),
-                    Description = $"Sales to {partyTxt.Text.Trim()} - {saleItems.Count} items",
-                    Status = "Active",
-                    Items = saleItems
+                    Description = $"Sales to {customerTxt.Text.Trim()}",
+                    Status = "Active"
                 };
+
+                // Add items to voucher
+                foreach (var item in saleItems)
+                {
+                    salesVoucher.Items.Add(new VoucherItem
+                    {
+                        ProductName = item.ProductName,
+                        Quantity = item.Quantity,
+                        UnitPrice = item.Rate
+                    });
+                }
 
                 if (voucherManager.AddVoucher(salesVoucher))
                 {
-                    MessageBox.Show("Sales voucher saved successfully! Stock levels updated.", "Success", 
+                    MessageBox.Show("Sales saved successfully!\nStock updated.", "Success", 
                                   MessageBoxButtons.OK, MessageBoxIcon.Information);
                     ClearForm();
                     voucherNumberTxt.Text = voucherManager.GenerateVoucherNumber("Sales");
-                }
-                else
-                {
-                    MessageBox.Show("Failed to save sales voucher!", "Error", 
-                                  MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
@@ -261,7 +286,7 @@ namespace BillingSoftware.Forms.Vouchers
 
         private void ClearForm()
         {
-            partyTxt.Clear();
+            customerTxt.Clear();
             saleItems.Clear();
             itemsGrid.Rows.Clear();
             totalAmountTxt.Text = "0.00";
@@ -277,12 +302,22 @@ namespace BillingSoftware.Forms.Vouchers
         }
     }
 
+    // Sale Item Class
+    public class SaleItem
+    {
+        public string ProductName { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public string Unit { get; set; } = "PCS";
+        public decimal Rate { get; set; }
+        public decimal Amount => Quantity * Rate;
+    }
+
+    // Sales Item Form
     public class SalesItemForm : Form
     {
-        public VoucherItem SaleItem { get; private set; }
+        public SaleItem SaleItem { get; private set; }
         
-        private ComboBox productCombo;
-        private TextBox quantityTxt, unitPriceTxt;
+        private TextBox productNameTxt, quantityTxt, rateTxt, unitTxt;
         private Button saveBtn, cancelBtn;
         private DatabaseManager dbManager;
 
@@ -290,51 +325,49 @@ namespace BillingSoftware.Forms.Vouchers
         {
             InitializeComponent();
             dbManager = new DatabaseManager();
-            SaleItem = new VoucherItem();
+            SaleItem = new SaleItem();
             CreateItemFormUI();
-            LoadProducts();
         }
 
         private void CreateItemFormUI()
         {
             this.Text = "Add Sale Item";
-            this.Size = new Size(400, 300);
+            this.Size = new Size(400, 250);
             this.StartPosition = FormStartPosition.CenterParent;
-            this.BackColor = Color.FromArgb(248, 249, 250);
 
-            // Title
             Label titleLabel = new Label();
             titleLabel.Text = "Add Sale Item";
             titleLabel.Font = new Font("Segoe UI", 12, FontStyle.Bold);
-            titleLabel.ForeColor = Color.FromArgb(44, 62, 80);
             titleLabel.Location = new Point(20, 20);
             titleLabel.Size = new Size(200, 25);
             this.Controls.Add(titleLabel);
 
-            // Product Combo
-            CreateLabel("Product:", 20, 60);
-            productCombo = new ComboBox();
-            productCombo.Location = new Point(120, 60);
-            productCombo.Size = new Size(200, 25);
-            productCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            this.Controls.Add(productCombo);
+            // Product Name
+            CreateLabel("Product Name:", 20, 60);
+            productNameTxt = CreateTextBox(130, 60, 200);
 
             // Quantity
             CreateLabel("Quantity:", 20, 100);
-            quantityTxt = CreateTextBox(120, 100, 100);
-            quantityTxt.KeyPress += NumericTextBox_KeyPress;
+            quantityTxt = CreateTextBox(130, 100, 100);
+            quantityTxt.Text = "1";
+            quantityTxt.KeyPress += NumericKeyPress;
 
-            // Unit Price
-            CreateLabel("Unit Price:", 20, 140);
-            unitPriceTxt = CreateTextBox(120, 140, 100);
-            unitPriceTxt.KeyPress += NumericTextBox_KeyPress;
+            // Unit
+            CreateLabel("Unit:", 20, 140);
+            unitTxt = CreateTextBox(130, 140, 80);
+            unitTxt.Text = "PCS";
+
+            // Rate
+            CreateLabel("Rate:", 20, 180);
+            rateTxt = CreateTextBox(130, 180, 100);
+            rateTxt.KeyPress += NumericKeyPress;
 
             // Buttons
-            saveBtn = CreateButton("Save", Color.FromArgb(46, 204, 113), new Point(80, 180));
-            saveBtn.Click += SaveBtn_Click;
+            saveBtn = CreateButton("Save", Color.FromArgb(46, 204, 113), new Point(100, 200)); // Changed from 220 to 200
+    saveBtn.Click += SaveBtn_Click;
 
-            cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(200, 180));
-            cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
+    cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(200, 200)); // Changed from 220 to 200
+    cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
 
             this.Controls.Add(saveBtn);
             this.Controls.Add(cancelBtn);
@@ -374,61 +407,11 @@ namespace BillingSoftware.Forms.Vouchers
                 FlatStyle = FlatStyle.Flat,
                 Size = new Size(80, 30),
                 Location = location,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9)
+                Cursor = Cursors.Hand
             };
         }
 
-        private void LoadProducts()
-{
-    productCombo.Items.Clear();
-    
-    string sql = "SELECT name, price, stock FROM products ORDER BY name";
-    using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-    using (var reader = cmd.ExecuteReader())
-    {
-        while (reader.Read())
-        {
-            var productName = reader["name"].ToString();
-            var price = Convert.ToDecimal(reader["price"]);
-            var stock = Convert.ToDecimal(reader["stock"]);
-            
-            // Only show products with stock > 0
-            if (stock > 0)
-            {
-                productCombo.Items.Add($"{productName} (Stock: {stock}, Price: ₹{price:N2})");
-            }
-        }
-    }
-    
-    // Auto-fill price when product is selected
-    productCombo.SelectedIndexChanged += ProductCombo_SelectedIndexChanged;
-}
-
-private void ProductCombo_SelectedIndexChanged(object sender, EventArgs e)
-{
-    if (productCombo.SelectedItem != null)
-    {
-        var selectedText = productCombo.SelectedItem.ToString();
-        
-        // Extract product name
-        var productName = selectedText.Split('(')[0].Trim();
-        
-        // Get current price from database
-        string sql = "SELECT price FROM products WHERE name = @name";
-        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-        {
-            cmd.Parameters.AddWithValue("@name", productName);
-            var result = cmd.ExecuteScalar();
-            if (result != null)
-            {
-                unitPriceTxt.Text = Convert.ToDecimal(result).ToString("N2");
-            }
-        }
-    }
-}
-
-        private void NumericTextBox_KeyPress(object sender, KeyPressEventArgs e)
+        private void NumericKeyPress(object sender, KeyPressEventArgs e)
         {
             if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
                 e.Handled = true;
@@ -439,36 +422,33 @@ private void ProductCombo_SelectedIndexChanged(object sender, EventArgs e)
 
         private void SaveBtn_Click(object sender, EventArgs e)
         {
-            if (productCombo.SelectedItem == null)
+            if (string.IsNullOrWhiteSpace(productNameTxt.Text))
             {
-                MessageBox.Show("Please select a product!", "Validation Error", 
+                MessageBox.Show("Please enter product name!", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (!decimal.TryParse(quantityTxt.Text, out decimal quantity) || quantity <= 0)
+            if (!decimal.TryParse(quantityTxt.Text, out decimal qty) || qty <= 0)
             {
-                MessageBox.Show("Please enter valid quantity greater than 0!", "Validation Error", 
+                MessageBox.Show("Please enter valid quantity!", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (!decimal.TryParse(unitPriceTxt.Text, out decimal unitPrice) || unitPrice < 0)
+            if (!decimal.TryParse(rateTxt.Text, out decimal rate) || rate < 0)
             {
-                MessageBox.Show("Please enter valid unit price!", "Validation Error", 
+                MessageBox.Show("Please enter valid rate!", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Extract product name from combo box
-            var productText = productCombo.SelectedItem.ToString();
-            var productName = productText.Split('(')[0].Trim();
-
-            SaleItem = new VoucherItem
+            SaleItem = new SaleItem
             {
-                ProductName = productName,
-                Quantity = quantity,
-                UnitPrice = unitPrice
+                ProductName = productNameTxt.Text.Trim(),
+                Quantity = qty,
+                Unit = string.IsNullOrWhiteSpace(unitTxt.Text) ? "PCS" : unitTxt.Text.Trim(),
+                Rate = rate
             };
 
             this.DialogResult = DialogResult.OK;
