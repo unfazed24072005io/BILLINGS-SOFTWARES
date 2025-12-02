@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using System.Data.SQLite;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
+using BillingSoftware.Utilities;
 
 namespace BillingSoftware.Forms.Vouchers
 {
@@ -18,7 +19,7 @@ namespace BillingSoftware.Forms.Vouchers
         private DateTimePicker datePicker, expiryDatePicker;
         private DataGridView itemsGrid;
         private ComboBox productSearchCombo;
-        private Button saveBtn, clearBtn, addItemBtn, removeItemBtn;
+        private Button saveBtn, clearBtn, addItemBtn, removeItemBtn, printBtn;
         private List<EstimateItem> estimateItems;
         
         private decimal discountPercent = 0;
@@ -166,8 +167,12 @@ namespace BillingSoftware.Forms.Vouchers
             clearBtn = CreateButton("🗑️ Clear", Color.FromArgb(149, 165, 166), new Point(150, 590));
             clearBtn.Click += ClearBtn_Click;
 
+            printBtn = CreateButton("🖨️ Print Preview", Color.FromArgb(155, 89, 182), new Point(280, 590));
+            printBtn.Click += PrintBtn_Click;
+
             this.Controls.Add(saveBtn);
             this.Controls.Add(clearBtn);
+            this.Controls.Add(printBtn);
         }
 
         private void CreateLabel(string text, int x, int y, Control parent)
@@ -393,6 +398,11 @@ namespace BillingSoftware.Forms.Vouchers
 
             try
             {
+                decimal subtotal = estimateItems.Sum(item => item.Amount);
+                decimal discountAmount = subtotal * (discountPercent / 100);
+                decimal taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
+                decimal grandTotal = subtotal - discountAmount + taxAmount;
+                
                 // Save estimate as a voucher with type "Estimate"
                 var estimateVoucher = new Voucher
                 {
@@ -400,9 +410,10 @@ namespace BillingSoftware.Forms.Vouchers
                     Number = estimateNumberTxt.Text,
                     Date = datePicker.Value,
                     Party = customerTxt.Text.Trim(),
-                    Amount = decimal.Parse(grandTotalTxt.Text),
+                    Amount = grandTotal,
                     Description = $"Estimate valid until: {expiryDatePicker.Value:dd-MMM-yyyy}. " +
-                                 $"Items: {estimateItems.Count}, Discount: {discountPercent}%, Tax: {taxPercent}%",
+                                 $"Subtotal: ₹{subtotal:N2}, Discount: ₹{discountAmount:N2} ({discountPercent}%), " +
+                                 $"Tax: ₹{taxAmount:N2} ({taxPercent}%)",
                     Status = "Active"
                 };
 
@@ -419,14 +430,24 @@ namespace BillingSoftware.Forms.Vouchers
 
                 if (voucherManager.AddVoucher(estimateVoucher))
                 {
-                    MessageBox.Show("Estimate saved successfully!\n\n" +
-                                  $"Estimate #: {estimateNumberTxt.Text}\n" +
-                                  $"Customer: {customerTxt.Text}\n" +
-                                  $"Amount: ₹{grandTotalTxt.Text}\n" +
-                                  $"Valid Until: {expiryDatePicker.Value:dd-MMM-yyyy}", 
-                                  "Success", 
-                                  MessageBoxButtons.OK, 
-                                  MessageBoxIcon.Information);
+                    string message = $"Estimate saved successfully!\n\n" +
+                                   $"Estimate #: {estimateNumberTxt.Text}\n" +
+                                   $"Customer: {customerTxt.Text}\n" +
+                                   $"Subtotal: ₹{subtotal:N2}\n" +
+                                   $"Discount ({discountPercent}%): ₹{discountAmount:N2}\n" +
+                                   $"Tax ({taxPercent}%): ₹{taxAmount:N2}\n" +
+                                   $"Grand Total: ₹{grandTotal:N2}\n" +
+                                   $"Valid Until: {expiryDatePicker.Value:dd-MMM-yyyy}\n\n" +
+                                   $"Do you want to print this estimate?";
+                    
+                    var result = MessageBox.Show(message, "Success", 
+                                               MessageBoxButtons.YesNo, 
+                                               MessageBoxIcon.Information);
+                    
+                    if (result == DialogResult.Yes)
+                    {
+                        PrintBtn_Click(null, EventArgs.Empty);
+                    }
                     
                     ClearForm();
                     estimateNumberTxt.Text = $"EST-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}";
@@ -437,6 +458,46 @@ namespace BillingSoftware.Forms.Vouchers
                 MessageBox.Show($"Error saving estimate: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void PrintBtn_Click(object sender, EventArgs e)
+        {
+            if (estimateItems.Count == 0)
+            {
+                MessageBox.Show("Please add items to the estimate before printing!", 
+                              "No Items", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            decimal subtotal = estimateItems.Sum(item => item.Amount);
+            decimal discountAmount = subtotal * (discountPercent / 100);
+            decimal taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
+            decimal grandTotal = subtotal - discountAmount + taxAmount;
+            
+            var estimateVoucher = new Voucher
+            {
+                Type = "Estimate",
+                Number = estimateNumberTxt.Text,
+                Date = datePicker.Value,
+                Party = string.IsNullOrWhiteSpace(customerTxt.Text) ? "Customer" : customerTxt.Text.Trim(),
+                Amount = grandTotal,
+                Description = $"Estimate valid until: {expiryDatePicker.Value:dd-MMM-yyyy}"
+            };
+
+            // Convert estimate items to voucher items
+            var voucherItems = new List<VoucherItem>();
+            foreach (var item in estimateItems)
+            {
+                voucherItems.Add(new VoucherItem
+                {
+                    ProductName = item.ProductName,
+                    Quantity = item.Quantity,
+                    UnitPrice = item.Rate
+                });
+            }
+
+            PrintHelper printHelper = new PrintHelper();
+            printHelper.PrintEstimate(estimateVoucher, voucherItems, discountPercent, taxPercent);
         }
 
         private void ClearBtn_Click(object sender, EventArgs e)
@@ -520,11 +581,11 @@ namespace BillingSoftware.Forms.Vouchers
             quantityTxt.KeyPress += QuantityTxt_KeyPress;
             this.Controls.Add(quantityTxt);
 
-            okBtn = CreateButton("OK", Color.FromArgb(46, 204, 113), new Point(50, 100));
+            okBtn = CreateButton("OK", Color.FromArgb(46, 204, 113), new Point(70, 100));
             okBtn.Click += OkBtn_Click;
             this.Controls.Add(okBtn);
 
-            cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(150, 100));
+            cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(170, 100));
             cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
             this.Controls.Add(cancelBtn);
         }

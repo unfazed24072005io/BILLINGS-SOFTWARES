@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Data.SQLite;
 using BillingSoftware.Modules;
 using BillingSoftware.Models;
+using BillingSoftware.Utilities;
 
 namespace BillingSoftware.Forms.Vouchers
 {
@@ -16,7 +17,7 @@ namespace BillingSoftware.Forms.Vouchers
         private TextBox voucherNumberTxt, customerTxt, totalAmountTxt;
         private DateTimePicker datePicker;
         private DataGridView itemsGrid;
-        private Button saveBtn, clearBtn, addItemBtn, removeItemBtn;
+        private Button saveBtn, clearBtn, addItemBtn, removeItemBtn, printBtn;
         private List<SaleItem> saleItems;
 
         public SalesForm()
@@ -122,8 +123,12 @@ namespace BillingSoftware.Forms.Vouchers
             clearBtn = CreateButton("🗑️ Clear", Color.FromArgb(149, 165, 166), new Point(150, 490));
             clearBtn.Click += ClearBtn_Click;
 
+            printBtn = CreateButton("🖨️ Print", Color.FromArgb(155, 89, 182), new Point(280, 490));
+            printBtn.Click += PrintBtn_Click;
+
             this.Controls.Add(saveBtn);
             this.Controls.Add(clearBtn);
+            this.Controls.Add(printBtn);
         }
 
         private void CreateLabel(string text, int x, int y, Control parent)
@@ -266,8 +271,21 @@ namespace BillingSoftware.Forms.Vouchers
 
                 if (voucherManager.AddVoucher(salesVoucher))
                 {
-                    MessageBox.Show("Sales saved successfully!\nStock updated.", "Success", 
-                                  MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    string message = $"Sales saved successfully!\nStock updated.\n\n" +
+                                   $"Sales #: {voucherNumberTxt.Text}\n" +
+                                   $"Customer: {customerTxt.Text}\n" +
+                                   $"Amount: ₹{totalAmountTxt.Text}\n\n" +
+                                   $"Do you want to print this sales voucher?";
+                    
+                    var result = MessageBox.Show(message, "Success", 
+                                               MessageBoxButtons.YesNo, 
+                                               MessageBoxIcon.Information);
+                    
+                    if (result == DialogResult.Yes)
+                    {
+                        PrintBtn_Click(null, EventArgs.Empty);
+                    }
+                    
                     ClearForm();
                     voucherNumberTxt.Text = voucherManager.GenerateVoucherNumber("Sales");
                 }
@@ -277,6 +295,40 @@ namespace BillingSoftware.Forms.Vouchers
                 MessageBox.Show($"Error saving sales: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void PrintBtn_Click(object sender, EventArgs e)
+        {
+            if (saleItems.Count == 0)
+            {
+                MessageBox.Show("Please add items to the sales before printing!", 
+                              "No Items", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var salesVoucher = new Voucher
+            {
+                Type = "Sales",
+                Number = voucherNumberTxt.Text,
+                Date = datePicker.Value,
+                Party = string.IsNullOrWhiteSpace(customerTxt.Text) ? "Customer" : customerTxt.Text.Trim(),
+                Amount = decimal.Parse(totalAmountTxt.Text),
+                Description = $"Sales to {customerTxt.Text.Trim()}"
+            };
+
+            var voucherItems = new List<VoucherItem>();
+            foreach (var item in saleItems)
+            {
+                voucherItems.Add(new VoucherItem
+                {
+                    ProductName = item.ProductName,
+                    Quantity = item.Quantity,
+                    UnitPrice = item.Rate
+                });
+            }
+
+            PrintHelper printHelper = new PrintHelper();
+            printHelper.PrintVoucher(salesVoucher, voucherItems);
         }
 
         private void ClearBtn_Click(object sender, EventArgs e)
@@ -300,16 +352,6 @@ namespace BillingSoftware.Forms.Vouchers
             this.Name = "SalesForm";
             this.ResumeLayout(false);
         }
-    }
-
-    // Sale Item Class
-    public class SaleItem
-    {
-        public string ProductName { get; set; } = "";
-        public decimal Quantity { get; set; }
-        public string Unit { get; set; } = "PCS";
-        public decimal Rate { get; set; }
-        public decimal Amount => Quantity * Rate;
     }
 
     // Sales Item Form
@@ -363,11 +405,11 @@ namespace BillingSoftware.Forms.Vouchers
             rateTxt.KeyPress += NumericKeyPress;
 
             // Buttons
-            saveBtn = CreateButton("Save", Color.FromArgb(46, 204, 113), new Point(100, 200)); // Changed from 220 to 200
-    saveBtn.Click += SaveBtn_Click;
+            saveBtn = CreateButton("Save", Color.FromArgb(46, 204, 113), new Point(120, 220));
+            saveBtn.Click += SaveBtn_Click;
 
-    cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(200, 200)); // Changed from 220 to 200
-    cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
+            cancelBtn = CreateButton("Cancel", Color.FromArgb(149, 165, 166), new Point(220, 220));
+            cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
 
             this.Controls.Add(saveBtn);
             this.Controls.Add(cancelBtn);
