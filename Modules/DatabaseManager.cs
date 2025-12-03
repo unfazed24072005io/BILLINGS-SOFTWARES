@@ -40,6 +40,18 @@ namespace BillingSoftware.Modules
         private void CreateTables()
         {
             string[] tables = {
+                // Users table
+                @"CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    role TEXT DEFAULT 'User',
+                    full_name TEXT,
+                    email TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_date TEXT DEFAULT CURRENT_TIMESTAMP
+                )",
+
                 // Vouchers table
                 @"CREATE TABLE IF NOT EXISTS vouchers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +62,8 @@ namespace BillingSoftware.Modules
                     amount DECIMAL(15,2) DEFAULT 0,
                     description TEXT,
                     status TEXT DEFAULT 'Active',
+                    reference_voucher TEXT,
+		    created_by TEXT,
                     created_date TEXT DEFAULT CURRENT_TIMESTAMP
                 )",
 
@@ -100,6 +114,112 @@ namespace BillingSoftware.Modules
                     transaction_date TEXT DEFAULT CURRENT_TIMESTAMP,
                     notes TEXT,
                     created_date TEXT DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                // NEW: Ledger tables
+                @"CREATE TABLE IF NOT EXISTS ledgers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT UNIQUE NOT NULL,
+                    type TEXT NOT NULL,
+                    contact_person TEXT,
+                    phone TEXT,
+                    email TEXT,
+                    address TEXT,
+                    gstin TEXT,
+                    opening_balance DECIMAL(15,2) DEFAULT 0,
+                    balance_type TEXT DEFAULT 'Dr',
+                    credit_limit DECIMAL(15,2) DEFAULT 0,
+                    current_balance DECIMAL(15,2) DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT
+                )",
+                
+                @"CREATE TABLE IF NOT EXISTS ledger_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    voucher_type TEXT NOT NULL,
+                    voucher_number TEXT NOT NULL,
+                    ledger_name TEXT NOT NULL,
+                    particulars TEXT,
+                    debit DECIMAL(15,2) DEFAULT 0,
+                    credit DECIMAL(15,2) DEFAULT 0,
+                    balance DECIMAL(15,2) DEFAULT 0,
+                    reference TEXT,
+                    narration TEXT,
+                    created_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT
+                )",
+                
+                @"CREATE TABLE IF NOT EXISTS receipt_vouchers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    number TEXT UNIQUE NOT NULL,
+                    date TEXT NOT NULL,
+                    received_from TEXT NOT NULL,
+                    amount_in_words TEXT,
+                    amount DECIMAL(15,2) DEFAULT 0,
+                    payment_mode TEXT DEFAULT 'Cash',
+                    cheque_no TEXT,
+                    cheque_date TEXT,
+                    bank_name TEXT,
+                    narration TEXT,
+                    is_posted INTEGER DEFAULT 0,
+                    created_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT
+                )",
+                
+                @"CREATE TABLE IF NOT EXISTS receipt_details (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_number TEXT NOT NULL,
+                    ledger_name TEXT NOT NULL,
+                    particulars TEXT,
+                    amount DECIMAL(15,2) DEFAULT 0,
+                    voucher_reference TEXT,
+                    FOREIGN KEY (receipt_number) REFERENCES receipt_vouchers (number)
+                )",
+                
+                @"CREATE TABLE IF NOT EXISTS payment_vouchers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    number TEXT UNIQUE NOT NULL,
+                    date TEXT NOT NULL,
+                    paid_to TEXT NOT NULL,
+                    amount_in_words TEXT,
+                    amount DECIMAL(15,2) DEFAULT 0,
+                    payment_mode TEXT DEFAULT 'Cash',
+                    cheque_no TEXT,
+                    cheque_date TEXT,
+                    bank_name TEXT,
+                    narration TEXT,
+                    is_posted INTEGER DEFAULT 0,
+                    created_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT
+                )",
+                
+                @"CREATE TABLE IF NOT EXISTS payment_details (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    payment_number TEXT NOT NULL,
+                    ledger_name TEXT NOT NULL,
+                    particulars TEXT,
+                    amount DECIMAL(15,2) DEFAULT 0,
+                    voucher_reference TEXT,
+                    FOREIGN KEY (payment_number) REFERENCES payment_vouchers (number)
+                )",
+                
+                // Audit logs table
+                @"CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    user_role TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT,
+                    details TEXT,
+                    old_values TEXT,
+                    new_values TEXT,
+                    ip_address TEXT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    module TEXT
                 )"
             };
 
@@ -126,9 +246,9 @@ namespace BillingSoftware.Modules
         {
             try
             {
-                // Default admin user (if needed)
-                string userSql = @"INSERT OR IGNORE INTO users (username, password, role) 
-                                   VALUES ('admin', 'admin', 'Admin')";
+                // Default admin user
+                string userSql = @"INSERT OR IGNORE INTO users (username, password, role, full_name) 
+                                   VALUES ('admin', 'admin123', 'Admin', 'Administrator')";
                 using (var cmd = new SQLiteCommand(userSql, connection))
                     cmd.ExecuteNonQuery();
 
@@ -141,6 +261,24 @@ namespace BillingSoftware.Modules
                                       ('USB-C Cable', 'UC001', 800, 50, 'PCS', 20)";
                 using (var cmd = new SQLiteCommand(productsSql, connection))
                     cmd.ExecuteNonQuery();
+
+                // Default ledgers
+                string[] defaultLedgers = {
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Cash', '001', 'Cash', 0, 'Dr')",
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Bank', '002', 'Bank', 0, 'Dr')",
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Sales', '003', 'Income', 0, 'Cr')",
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Purchase', '004', 'Expense', 0, 'Dr')",
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Sundry Debtors', '005', 'Customer', 0, 'Dr')",
+                    "INSERT OR IGNORE INTO ledgers (name, code, type, opening_balance, balance_type) VALUES ('Sundry Creditors', '006', 'Supplier', 0, 'Cr')"
+                };
+
+                foreach (string sql in defaultLedgers)
+                {
+                    using (var cmd = new SQLiteCommand(sql, connection))
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+                }
 
             }
             catch (Exception ex)
@@ -163,6 +301,125 @@ namespace BillingSoftware.Modules
             if (connection != null && connection.State == System.Data.ConnectionState.Open)
             {
                 connection.Close();
+            }
+        }
+
+        // ============ USER MANAGEMENT METHODS ============
+        public User GetUserByUsername(string username)
+        {
+            try
+            {
+                string sql = "SELECT * FROM users WHERE username = @username AND is_active = 1";
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@username", username);
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            return new User
+                            {
+                                Id = Convert.ToInt32(reader["id"]),
+                                Username = reader["username"].ToString(),
+                                Password = reader["password"].ToString(),
+                                Role = reader["role"].ToString(),
+                                FullName = reader["full_name"].ToString(),
+                                Email = reader["email"].ToString(),
+                                IsActive = Convert.ToBoolean(reader["is_active"]),
+                                CreatedDate = DateTime.Parse(reader["created_date"].ToString())
+                            };
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error getting user: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            return null;
+        }
+
+        public bool UpdateUserPassword(string username, string newPassword)
+        {
+            try
+            {
+                string sql = "UPDATE users SET password = @password WHERE username = @username";
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@password", newPassword);
+                    cmd.Parameters.AddWithValue("@username", username);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error updating password: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        public List<User> GetAllUsers()
+        {
+            var users = new List<User>();
+            
+            try
+            {
+                string sql = "SELECT * FROM users ORDER BY username";
+                using (var cmd = new SQLiteCommand(sql, connection))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        users.Add(new User
+                        {
+                            Id = Convert.ToInt32(reader["id"]),
+                            Username = reader["username"].ToString(),
+                            Password = "", // Don't return password
+                            Role = reader["role"].ToString(),
+                            FullName = reader["full_name"].ToString(),
+                            Email = reader["email"].ToString(),
+                            IsActive = Convert.ToBoolean(reader["is_active"]),
+                            CreatedDate = DateTime.Parse(reader["created_date"].ToString())
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading users: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            
+            return users;
+        }
+
+        public bool AddUser(User user)
+        {
+            try
+            {
+                string sql = @"INSERT INTO users (username, password, role, full_name, email) 
+                              VALUES (@username, @password, @role, @fullName, @email)";
+
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@username", user.Username);
+                    cmd.Parameters.AddWithValue("@password", user.Password);
+                    cmd.Parameters.AddWithValue("@role", user.Role);
+                    cmd.Parameters.AddWithValue("@fullName", user.FullName);
+                    cmd.Parameters.AddWithValue("@email", user.Email);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error adding user: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -321,9 +578,10 @@ namespace BillingSoftware.Modules
                 try
                 {
                     // Insert main voucher
-                    string voucherSql = @"INSERT INTO vouchers (type, number, date, party, amount, description, status)
-                                      VALUES (@type, @number, @date, @party, @amount, @description, @status)";
-
+                    string voucherSql = @"INSERT INTO vouchers (type, number, date, party, amount, description, 
+                                  status, reference_voucher, created_by)
+                                  VALUES (@type, @number, @date, @party, @amount, @description, 
+                                          @status, @reference, @createdBy)";
                     using (var cmd = new SQLiteCommand(voucherSql, connection, transaction))
                     {
                         cmd.Parameters.AddWithValue("@type", voucher.Type);
@@ -333,6 +591,8 @@ namespace BillingSoftware.Modules
                         cmd.Parameters.AddWithValue("@amount", voucher.Amount);
                         cmd.Parameters.AddWithValue("@description", voucher.Description);
                         cmd.Parameters.AddWithValue("@status", voucher.Status);
+                        cmd.Parameters.AddWithValue("@reference", voucher.ReferenceVoucher);
+			cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
 
                         if (cmd.ExecuteNonQuery() == 0)
                             throw new Exception("Failed to insert voucher");
@@ -357,11 +617,11 @@ namespace BillingSoftware.Modules
                         }
 
                         // Update stock for sales and purchases
-                        if (voucher.Type == "Sales")
-                        {
-                            UpdateProductStock(item.ProductName, -item.Quantity);
-                            AddStockTransaction(item.ProductName, "SALE", item.Quantity, item.UnitPrice, voucher.Number);
-                        }
+                        // Post to ledger for sales and purchases
+			if (voucher.Type == "Sales" || voucher.Type == "Stock Purchase")
+			{
+			    PostVoucherToLedger(voucher, transaction);
+			}
                         else if (voucher.Type == "Stock Purchase")
                         {
                             UpdateProductStock(item.ProductName, item.Quantity);
@@ -376,12 +636,20 @@ namespace BillingSoftware.Modules
                         decimal discount = 0;
                         decimal tax = 0;
                         
+                        // Try to extract discount and tax from description
+                        string desc = voucher.Description;
+                        if (desc.Contains("Discount:"))
+                        {
+                            // Simple extraction - you might want to improve this
+                            var discountPart = desc.Split("Discount:").LastOrDefault()?.Split('%').FirstOrDefault();
+                            if (decimal.TryParse(discountPart, out discount)) { }
+                        }
+                        
                         string estimateSql = @"INSERT INTO estimate_details (estimate_number, discount_percent, tax_percent, expiry_date)
                                            VALUES (@number, @discount, @tax, @expiry)";
                         
                         using (var cmd = new SQLiteCommand(estimateSql, connection, transaction))
                         {
-                            // Extract from description (you might want to pass these as parameters)
                             cmd.Parameters.AddWithValue("@number", voucher.Number);
                             cmd.Parameters.AddWithValue("@discount", discount);
                             cmd.Parameters.AddWithValue("@tax", tax);
@@ -491,6 +759,39 @@ namespace BillingSoftware.Modules
             return vouchers;
         }
 
+        public Voucher GetVoucherByNumber(string voucherNumber)
+        {
+            try
+            {
+                string sql = @"SELECT v.*, 
+                              GROUP_CONCAT(vi.product_name || '|' || vi.quantity || '|' || vi.unit_price, ';') as items
+                              FROM vouchers v
+                              LEFT JOIN voucher_items vi ON v.number = vi.voucher_number
+                              WHERE v.number = @number
+                              GROUP BY v.id";
+                
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@number", voucherNumber);
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            return ParseVoucherFromReader(reader);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading voucher: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            
+            return null;
+        }
+
         private Voucher ParseVoucherFromReader(SQLiteDataReader reader)
         {
             var voucher = new Voucher
@@ -502,7 +803,8 @@ namespace BillingSoftware.Modules
                 Party = reader["party"].ToString(),
                 Amount = Convert.ToDecimal(reader["amount"]),
                 Description = reader["description"].ToString(),
-                Status = reader["status"].ToString()
+                Status = reader["status"].ToString(),
+                ReferenceVoucher = reader["reference_voucher"].ToString()
             };
 
             // Parse items
@@ -535,6 +837,8 @@ namespace BillingSoftware.Modules
                 "Sales" => "SL",
                 "Stock Purchase" => "STK",
                 "Estimate" => "EST",
+                "Receipt" => "RCPT",
+                "Payment" => "PAY",
                 _ => "VCH"
             };
             
@@ -671,7 +975,7 @@ namespace BillingSoftware.Modules
             }
         }
 
-        // ============ UTILITY METHODS ============
+        // ============ BACKUP & RESTORE METHODS ============
         public bool BackupDatabase(string backupPath)
         {
             try
@@ -711,6 +1015,591 @@ namespace BillingSoftware.Modules
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
+        }
+
+        // ============ UTILITY METHODS ============
+        public DataTable ExecuteQuery(string sql)
+        {
+            var dataTable = new DataTable();
+            try
+            {
+                using (var cmd = new SQLiteCommand(sql, connection))
+                using (var adapter = new SQLiteDataAdapter(cmd))
+                {
+                    adapter.Fill(dataTable);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error executing query: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            return dataTable;
+        }
+
+        public int ExecuteNonQuery(string sql)
+        {
+            try
+            {
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error executing command: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return -1;
+            }
+        }
+
+        // ============ LEDGER MANAGEMENT METHODS ============
+        public bool AddLedger(Ledger ledger)
+        {
+            try
+            {
+                string sql = @"INSERT INTO ledgers 
+                              (name, code, type, contact_person, phone, email, address, gstin,
+                               opening_balance, balance_type, credit_limit, current_balance, created_by)
+                              VALUES (@name, @code, @type, @contact, @phone, @email, @address, @gstin,
+                                      @opening, @balanceType, @creditLimit, @currentBalance, @createdBy)";
+
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@name", ledger.Name);
+                    cmd.Parameters.AddWithValue("@code", ledger.Code);
+                    cmd.Parameters.AddWithValue("@type", ledger.Type);
+                    cmd.Parameters.AddWithValue("@contact", ledger.ContactPerson);
+                    cmd.Parameters.AddWithValue("@phone", ledger.Phone);
+                    cmd.Parameters.AddWithValue("@email", ledger.Email);
+                    cmd.Parameters.AddWithValue("@address", ledger.Address);
+                    cmd.Parameters.AddWithValue("@gstin", ledger.GSTIN);
+                    cmd.Parameters.AddWithValue("@opening", ledger.OpeningBalance);
+                    cmd.Parameters.AddWithValue("@balanceType", ledger.BalanceType);
+                    cmd.Parameters.AddWithValue("@creditLimit", ledger.CreditLimit);
+                    cmd.Parameters.AddWithValue("@currentBalance", ledger.CurrentBalance);
+                    cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error adding ledger: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        public DataTable GetAllLedgers()
+{
+    var dataTable = new DataTable();
+    
+    try
+    {
+        string sql = @"SELECT l.code, l.name, l.type, l.current_balance, l.balance_type,
+                      (SELECT SUM(amount) FROM vouchers v 
+                       WHERE v.party = l.name AND v.type = 'Sales' AND v.status = 'Active') as total_sales,
+                      (SELECT SUM(amount) FROM vouchers v 
+                       WHERE v.party = l.name AND v.type = 'Stock Purchase' AND v.status = 'Active') as total_purchases,
+                      l.phone, l.email, l.is_active
+                      FROM ledgers l 
+                      ORDER BY l.name";
+        
+        using (var cmd = new SQLiteCommand(sql, connection))
+        using (var adapter = new SQLiteDataAdapter(cmd))
+        {
+            adapter.Fill(dataTable);
+        }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error loading ledgers: {ex.Message}", "Error", 
+                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+    
+    return dataTable;
+}
+
+        public Ledger GetLedgerByName(string ledgerName)
+        {
+            try
+            {
+                string sql = "SELECT * FROM ledgers WHERE name = @name AND is_active = 1";
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@name", ledgerName);
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            return new Ledger
+                            {
+                                Id = Convert.ToInt32(reader["id"]),
+                                Name = reader["name"].ToString(),
+                                Code = reader["code"].ToString(),
+                                Type = reader["type"].ToString(),
+                                ContactPerson = reader["contact_person"].ToString(),
+                                Phone = reader["phone"].ToString(),
+                                Email = reader["email"].ToString(),
+                                Address = reader["address"].ToString(),
+                                GSTIN = reader["gstin"].ToString(),
+                                OpeningBalance = Convert.ToDecimal(reader["opening_balance"]),
+                                BalanceType = reader["balance_type"].ToString(),
+                                CreditLimit = Convert.ToDecimal(reader["credit_limit"]),
+                                CurrentBalance = Convert.ToDecimal(reader["current_balance"]),
+                                IsActive = Convert.ToBoolean(reader["is_active"])
+                            };
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error getting ledger: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            
+            return null;
+        }
+
+        public bool UpdateLedgerBalance(string ledgerName, decimal amount, string transactionType)
+        {
+            try
+            {
+                string sql = "";
+                if (transactionType == "Dr")
+                    sql = "UPDATE ledgers SET current_balance = current_balance + @amount WHERE name = @name";
+                else if (transactionType == "Cr")
+                    sql = "UPDATE ledgers SET current_balance = current_balance - @amount WHERE name = @name";
+                else
+                    return false;
+
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@amount", amount);
+                    cmd.Parameters.AddWithValue("@name", ledgerName);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error updating ledger balance: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        public bool AddLedgerTransaction(LedgerTransaction transaction)
+        {
+            try
+            {
+                string sql = @"INSERT INTO ledger_transactions 
+                              (date, voucher_type, voucher_number, ledger_name, particulars,
+                               debit, credit, balance, reference, narration, created_by)
+                              VALUES (@date, @voucherType, @voucherNumber, @ledgerName, @particulars,
+                                      @debit, @credit, @balance, @reference, @narration, @createdBy)";
+
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@date", transaction.Date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@voucherType", transaction.VoucherType);
+                    cmd.Parameters.AddWithValue("@voucherNumber", transaction.VoucherNumber);
+                    cmd.Parameters.AddWithValue("@ledgerName", transaction.LedgerName);
+                    cmd.Parameters.AddWithValue("@particulars", transaction.Particulars);
+                    cmd.Parameters.AddWithValue("@debit", transaction.Debit);
+                    cmd.Parameters.AddWithValue("@credit", transaction.Credit);
+                    cmd.Parameters.AddWithValue("@balance", transaction.Balance);
+                    cmd.Parameters.AddWithValue("@reference", transaction.Reference);
+                    cmd.Parameters.AddWithValue("@narration", transaction.Narration);
+                    cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error adding ledger transaction: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        public DataTable GetLedgerStatement(string ledgerName, DateTime fromDate, DateTime toDate)
+        {
+            var dataTable = new DataTable();
+            
+            try
+            {
+                string sql = @"SELECT date, voucher_type, voucher_number, particulars, 
+                              debit, credit, balance, reference
+                              FROM ledger_transactions 
+                              WHERE ledger_name = @ledgerName 
+                              AND DATE(date) BETWEEN @fromDate AND @toDate
+                              ORDER BY date, id";
+                
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@ledgerName", ledgerName);
+                    cmd.Parameters.AddWithValue("@fromDate", fromDate.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@toDate", toDate.ToString("yyyy-MM-dd"));
+                    
+                    using (var adapter = new SQLiteDataAdapter(cmd))
+                    {
+                        adapter.Fill(dataTable);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading ledger statement: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            
+            return dataTable;
+        }
+
+        public bool AddReceiptVoucher(ReceiptVoucher voucher)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // Insert receipt voucher
+                    string voucherSql = @"INSERT INTO receipt_vouchers 
+                                        (number, date, received_from, amount_in_words, amount,
+                                         payment_mode, cheque_no, cheque_date, bank_name, narration, created_by)
+                                        VALUES (@number, @date, @receivedFrom, @amountInWords, @amount,
+                                                @paymentMode, @chequeNo, @chequeDate, @bankName, @narration, @createdBy)";
+
+                    using (var cmd = new SQLiteCommand(voucherSql, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@number", voucher.Number);
+                        cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@receivedFrom", voucher.ReceivedFrom);
+                        cmd.Parameters.AddWithValue("@amountInWords", voucher.AmountInWords);
+                        cmd.Parameters.AddWithValue("@amount", voucher.Amount);
+                        cmd.Parameters.AddWithValue("@paymentMode", voucher.PaymentMode);
+                        cmd.Parameters.AddWithValue("@chequeNo", voucher.ChequeNo);
+                        cmd.Parameters.AddWithValue("@chequeDate", voucher.ChequeDate?.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@bankName", voucher.BankName);
+                        cmd.Parameters.AddWithValue("@narration", voucher.Narration);
+                        cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+
+                        if (cmd.ExecuteNonQuery() == 0)
+                            throw new Exception("Failed to insert receipt voucher");
+                    }
+
+                    // Insert receipt details
+                    foreach (var detail in voucher.Details)
+                    {
+                        string detailSql = @"INSERT INTO receipt_details 
+                                           (receipt_number, ledger_name, particulars, amount, voucher_reference)
+                                           VALUES (@receiptNumber, @ledgerName, @particulars, @amount, @voucherReference)";
+
+                        using (var cmd = new SQLiteCommand(detailSql, connection, transaction))
+                        {
+                            cmd.Parameters.AddWithValue("@receiptNumber", voucher.Number);
+                            cmd.Parameters.AddWithValue("@ledgerName", detail.LedgerName);
+                            cmd.Parameters.AddWithValue("@particulars", detail.Particulars);
+                            cmd.Parameters.AddWithValue("@amount", detail.Amount);
+                            cmd.Parameters.AddWithValue("@voucherReference", detail.VoucherReference);
+
+                            if (cmd.ExecuteNonQuery() == 0)
+                                throw new Exception("Failed to insert receipt detail");
+                        }
+                    }
+
+                    // Post to ledger transactions
+                    PostReceiptToLedger(voucher, transaction);
+
+                    transaction.Commit();
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    MessageBox.Show($"Error adding receipt voucher: {ex.Message}", "Error", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
+                }
+            }
+        }
+
+        private void PostReceiptToLedger(ReceiptVoucher voucher, SQLiteTransaction transaction)
+        {
+            try
+            {
+                // Debit Cash/Bank (increase asset)
+                string debitLedger = voucher.PaymentMode == "Cash" ? "Cash" : "Bank";
+                
+                // Get current balance
+                decimal currentBalance = GetLedgerCurrentBalance(debitLedger);
+                decimal newBalance = currentBalance + voucher.Amount;
+                
+                // Add debit transaction
+                string debitSql = @"INSERT INTO ledger_transactions 
+                                  (date, voucher_type, voucher_number, ledger_name, particulars,
+                                   debit, credit, balance, reference, narration, created_by)
+                                  VALUES (@date, 'Receipt', @voucherNumber, @ledgerName, @particulars,
+                                          @debit, @credit, @balance, @reference, @narration, @createdBy)";
+                
+                using (var cmd = new SQLiteCommand(debitSql, connection, transaction))
+                {
+                    cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                    cmd.Parameters.AddWithValue("@ledgerName", debitLedger);
+                    cmd.Parameters.AddWithValue("@particulars", $"Received from {voucher.ReceivedFrom}");
+                    cmd.Parameters.AddWithValue("@debit", voucher.Amount);
+                    cmd.Parameters.AddWithValue("@credit", 0);
+                    cmd.Parameters.AddWithValue("@balance", newBalance);
+                    cmd.Parameters.AddWithValue("@reference", voucher.Number);
+                    cmd.Parameters.AddWithValue("@narration", voucher.Narration);
+                    cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                    
+                    cmd.ExecuteNonQuery();
+                }
+                
+                // Update ledger balance
+                UpdateLedgerBalance(debitLedger, voucher.Amount, "Dr");
+                
+                // Credit respective ledgers from details
+                foreach (var detail in voucher.Details)
+                {
+                    currentBalance = GetLedgerCurrentBalance(detail.LedgerName);
+                    newBalance = currentBalance - voucher.Amount;
+                    
+                    // Add credit transaction
+                    using (var cmd = new SQLiteCommand(debitSql, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                        cmd.Parameters.AddWithValue("@ledgerName", detail.LedgerName);
+                        cmd.Parameters.AddWithValue("@particulars", detail.Particulars);
+                        cmd.Parameters.AddWithValue("@debit", 0);
+                        cmd.Parameters.AddWithValue("@credit", detail.Amount);
+                        cmd.Parameters.AddWithValue("@balance", newBalance);
+                        cmd.Parameters.AddWithValue("@reference", detail.VoucherReference);
+                        cmd.Parameters.AddWithValue("@narration", voucher.Narration);
+                        cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                    
+                    // Update ledger balance
+                    UpdateLedgerBalance(detail.LedgerName, detail.Amount, "Cr");
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error posting to ledger: {ex.Message}");
+            }
+        }
+
+        private decimal GetLedgerCurrentBalance(string ledgerName)
+        {
+            try
+            {
+                string sql = "SELECT current_balance FROM ledgers WHERE name = @name";
+                using (var cmd = new SQLiteCommand(sql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@name", ledgerName);
+                    object result = cmd.ExecuteScalar();
+                    return result == DBNull.Value ? 0 : Convert.ToDecimal(result);
+                }
+            }
+            catch { return 0; }
+        }
+
+        public DataTable GetReceiptVouchers()
+        {
+            var dataTable = new DataTable();
+            
+            try
+            {
+                string sql = @"SELECT number, date, received_from, amount, payment_mode, 
+                              CASE WHEN is_posted = 1 THEN 'Posted' ELSE 'Draft' END as status
+                              FROM receipt_vouchers 
+                              ORDER BY date DESC";
+                
+                using (var cmd = new SQLiteCommand(sql, connection))
+                using (var adapter = new SQLiteDataAdapter(cmd))
+                {
+                    adapter.Fill(dataTable);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading receipts: {ex.Message}", "Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            
+            return dataTable;
+        }
+
+        // ============ LEDGER POSTING METHODS ============
+        private void PostVoucherToLedger(Voucher voucher, SQLiteTransaction transaction)
+        {
+            try
+            {
+                if (voucher.Type == "Sales")
+                {
+                    // For Sales: Debit Party (Customer), Credit Sales
+                    PostSalesTransaction(voucher, transaction);
+                }
+                else if (voucher.Type == "Stock Purchase")
+                {
+                    // For Purchase: Debit Purchase, Credit Party (Supplier)
+                    PostPurchaseTransaction(voucher, transaction);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error posting voucher to ledger: {ex.Message}");
+            }
+        }
+
+        private void PostSalesTransaction(Voucher voucher, SQLiteTransaction transaction)
+        {
+            // Debit Customer/Sundry Debtors
+            string debitLedger = "Sundry Debtors"; // Default
+            if (!string.IsNullOrWhiteSpace(voucher.Party))
+            {
+                // Check if party exists as ledger
+                var partyLedger = GetLedgerByName(voucher.Party);
+                if (partyLedger != null)
+                {
+                    debitLedger = voucher.Party;
+                }
+            }
+            
+            // Credit Sales Account
+            string creditLedger = "Sales";
+            
+            // Debit transaction for Customer
+            decimal currentBalance = GetLedgerCurrentBalance(debitLedger);
+            decimal newBalance = currentBalance + voucher.Amount;
+            
+            string ledgerSql = @"INSERT INTO ledger_transactions 
+                        (date, voucher_type, voucher_number, ledger_name, particulars,
+                         debit, credit, balance, reference, narration, created_by)
+                        VALUES (@date, 'Sales', @voucherNumber, @ledgerName, @particulars,
+                                @debit, @credit, @balance, @reference, @narration, @createdBy)";
+            
+            using (var cmd = new SQLiteCommand(ledgerSql, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                cmd.Parameters.AddWithValue("@ledgerName", debitLedger);
+                cmd.Parameters.AddWithValue("@particulars", $"Sales to {voucher.Party}");
+                cmd.Parameters.AddWithValue("@debit", voucher.Amount);
+                cmd.Parameters.AddWithValue("@credit", 0);
+                cmd.Parameters.AddWithValue("@balance", newBalance);
+                cmd.Parameters.AddWithValue("@reference", voucher.Number);
+                cmd.Parameters.AddWithValue("@narration", voucher.Description);
+                cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                
+                cmd.ExecuteNonQuery();
+            }
+            
+            // Update ledger balance
+            UpdateLedgerBalance(debitLedger, voucher.Amount, "Dr");
+            
+            // Credit transaction for Sales
+            currentBalance = GetLedgerCurrentBalance(creditLedger);
+            newBalance = currentBalance - voucher.Amount;
+            
+            using (var cmd = new SQLiteCommand(ledgerSql, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                cmd.Parameters.AddWithValue("@ledgerName", creditLedger);
+                cmd.Parameters.AddWithValue("@particulars", $"Sales Invoice {voucher.Number}");
+                cmd.Parameters.AddWithValue("@debit", 0);
+                cmd.Parameters.AddWithValue("@credit", voucher.Amount);
+                cmd.Parameters.AddWithValue("@balance", newBalance);
+                cmd.Parameters.AddWithValue("@reference", voucher.Number);
+                cmd.Parameters.AddWithValue("@narration", voucher.Description);
+                cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                
+                cmd.ExecuteNonQuery();
+            }
+            
+            // Update ledger balance
+            UpdateLedgerBalance(creditLedger, voucher.Amount, "Cr");
+        }
+
+        private void PostPurchaseTransaction(Voucher voucher, SQLiteTransaction transaction)
+        {
+            // Debit Purchase Account
+            string debitLedger = "Purchase";
+            
+            // Credit Supplier/Sundry Creditors
+            string creditLedger = "Sundry Creditors"; // Default
+            if (!string.IsNullOrWhiteSpace(voucher.Party))
+            {
+                // Check if party exists as ledger
+                var partyLedger = GetLedgerByName(voucher.Party);
+                if (partyLedger != null)
+                {
+                    creditLedger = voucher.Party;
+                }
+            }
+            
+            // Debit transaction for Purchase
+            decimal currentBalance = GetLedgerCurrentBalance(debitLedger);
+            decimal newBalance = currentBalance + voucher.Amount;
+            
+            string ledgerSql = @"INSERT INTO ledger_transactions 
+                        (date, voucher_type, voucher_number, ledger_name, particulars,
+                         debit, credit, balance, reference, narration, created_by)
+                        VALUES (@date, 'Purchase', @voucherNumber, @ledgerName, @particulars,
+                                @debit, @credit, @balance, @reference, @narration, @createdBy)";
+            
+            using (var cmd = new SQLiteCommand(ledgerSql, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                cmd.Parameters.AddWithValue("@ledgerName", debitLedger);
+                cmd.Parameters.AddWithValue("@particulars", $"Purchase from {voucher.Party}");
+                cmd.Parameters.AddWithValue("@debit", voucher.Amount);
+                cmd.Parameters.AddWithValue("@credit", 0);
+                cmd.Parameters.AddWithValue("@balance", newBalance);
+                cmd.Parameters.AddWithValue("@reference", voucher.Number);
+                cmd.Parameters.AddWithValue("@narration", voucher.Description);
+                cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                
+                cmd.ExecuteNonQuery();
+            }
+            
+            // Update ledger balance
+            UpdateLedgerBalance(debitLedger, voucher.Amount, "Dr");
+            
+            // Credit transaction for Supplier
+            currentBalance = GetLedgerCurrentBalance(creditLedger);
+            newBalance = currentBalance - voucher.Amount;
+            
+            using (var cmd = new SQLiteCommand(ledgerSql, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@date", voucher.Date.ToString("yyyy-MM-dd"));
+                cmd.Parameters.AddWithValue("@voucherNumber", voucher.Number);
+                cmd.Parameters.AddWithValue("@ledgerName", creditLedger);
+                cmd.Parameters.AddWithValue("@particulars", $"Purchase Invoice {voucher.Number}");
+                cmd.Parameters.AddWithValue("@debit", 0);
+                cmd.Parameters.AddWithValue("@credit", voucher.Amount);
+                cmd.Parameters.AddWithValue("@balance", newBalance);
+                cmd.Parameters.AddWithValue("@reference", voucher.Number);
+                cmd.Parameters.AddWithValue("@narration", voucher.Description);
+                cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
+                
+                cmd.ExecuteNonQuery();
+            }
+            
+            // Update ledger balance
+            UpdateLedgerBalance(creditLedger, voucher.Amount, "Cr");
         }
 
         public void Dispose()

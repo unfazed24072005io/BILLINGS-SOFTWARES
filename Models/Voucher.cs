@@ -10,9 +10,10 @@ namespace BillingSoftware.Models
         public decimal Amount { get; set; }
         public string Description { get; set; } = "";
         public string Status { get; set; } = "Active";
-        public string ReferenceVoucher { get; set; } = ""; // ADDED: Reference to other voucher
+        public string ReferenceVoucher { get; set; } = "";
+        public string CreatedBy { get; set; } = ""; // ADD THIS
         public DateTime CreatedDate { get; set; } = DateTime.Now;
-        public List<VoucherItem> Items { get; set; } = new List<VoucherItem>(); // ADDED: Item list
+        public List<VoucherItem> Items { get; set; } = new List<VoucherItem>();
 
         public Voucher()
         {
@@ -20,10 +21,10 @@ namespace BillingSoftware.Models
             CreatedDate = DateTime.Now;
             Status = "Active";
             Items = new List<VoucherItem>();
+            CreatedBy = Program.CurrentUser; // Auto-set creator
         }
     }
 
-    // ADD THIS NEW CLASS for voucher items
     public class VoucherItem
     {
         public int Id { get; set; }
