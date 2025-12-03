@@ -13,6 +13,7 @@ namespace BillingSoftware.Forms.Vouchers
     {
         private DatabaseManager dbManager;
         private AuditLogger auditLogger;
+        private LedgerManager ledgerManager;
         
         private TextBox receiptNoTxt, receivedFromTxt, amountTxt, amountInWordsTxt;
         private TextBox chequeNoTxt, bankNameTxt, narrationTxt;
@@ -27,6 +28,7 @@ namespace BillingSoftware.Forms.Vouchers
             InitializeComponent();
             dbManager = new DatabaseManager();
             auditLogger = new AuditLogger();
+            ledgerManager = new LedgerManager();
             receiptDetails = new List<ReceiptDetail>();
             CreateReceiptFormUI();
             LoadLedgerList();
@@ -35,7 +37,7 @@ namespace BillingSoftware.Forms.Vouchers
         private void CreateReceiptFormUI()
         {
             this.Text = "Receipt Voucher";
-            this.Size = new Size(800, 650);
+            this.Size = new Size(850, 700);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = TallyUIStyles.TallyGray;
             
@@ -49,7 +51,7 @@ namespace BillingSoftware.Forms.Vouchers
             this.Controls.Add(titleLabel);
             
             // Main Container
-            GroupBox mainGroup = TallyUIStyles.CreateTallyGroupBox("Receipt Details", new Point(20, 60), new Size(750, 500));
+            GroupBox mainGroup = TallyUIStyles.CreateTallyGroupBox("Receipt Details", new Point(20, 60), new Size(800, 550));
             
             int yPos = 30;
             
@@ -115,47 +117,52 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Controls.AddRange(new Control[] { wordsLabel, amountInWordsTxt });
             yPos += 35;
             
-            // Details Grid
+            // Details Section
             Label detailsLabel = TallyUIStyles.CreateTallyLabel("Receipt Details:", new Point(20, yPos), new Size(120, 20), true);
             mainGroup.Controls.Add(detailsLabel);
             yPos += 25;
             
-            detailsGrid = TallyUIStyles.CreateTallyGrid(new Point(20, yPos), new Size(710, 150));
+            // Details Controls Panel
+            Panel detailControlPanel = new Panel();
+            detailControlPanel.Location = new Point(20, yPos);
+            detailControlPanel.Size = new Size(760, 40);
+            detailControlPanel.BackColor = Color.Transparent;
+            
+            Label ledgerLabel = TallyUIStyles.CreateTallyLabel("Ledger:", new Point(0, 8), new Size(50, 20));
+            ledgerCombo = TallyUIStyles.CreateTallyComboBox(new Point(55, 5), new Size(200, 25));
+            
+            Label particularsLabel = TallyUIStyles.CreateTallyLabel("Particulars:", new Point(265, 8), new Size(70, 20));
+            TextBox particularsTxt = TallyUIStyles.CreateTallyTextBox(new Point(340, 5), new Size(200, 25));
+            particularsTxt.PlaceholderText = "Enter particulars";
+            
+            Label detailAmountLabel = TallyUIStyles.CreateTallyLabel("Amount:", new Point(550, 8), new Size(50, 20));
+            TextBox detailAmountTxt = TallyUIStyles.CreateTallyTextBox(new Point(605, 5), new Size(100, 25));
+            detailAmountTxt.Text = "0.00";
+            
+            addDetailBtn = TallyUIStyles.CreateTallyButton("➕ Add", TallyUIStyles.TallyGreen, new Point(715, 5), new Size(80, 25));
+            
+            detailControlPanel.Controls.AddRange(new Control[] { ledgerLabel, ledgerCombo, particularsLabel, particularsTxt, 
+                                                               detailAmountLabel, detailAmountTxt, addDetailBtn });
+            mainGroup.Controls.Add(detailControlPanel);
+            yPos += 50;
+            
+            // Details Grid
+            detailsGrid = TallyUIStyles.CreateTallyGrid(new Point(20, yPos), new Size(760, 200));
             detailsGrid.Columns.Add("Ledger", "Ledger Account");
             detailsGrid.Columns.Add("Particulars", "Particulars");
             detailsGrid.Columns.Add("Amount", "Amount");
-            detailsGrid.Columns.Add("Reference", "Voucher Reference");
+            detailsGrid.Columns.Add("VoucherReference", "Voucher Reference");
             
             detailsGrid.Columns["Amount"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             detailsGrid.Columns["Amount"].DefaultCellStyle.Format = "N2";
             
             mainGroup.Controls.Add(detailsGrid);
-            yPos += 160;
+            yPos += 210;
             
-            // Detail Controls
-            Panel detailControlPanel = new Panel();
-            detailControlPanel.Location = new Point(20, yPos);
-            detailControlPanel.Size = new Size(710, 40);
-            detailControlPanel.BackColor = Color.Transparent;
-            
-            Label ledgerLabel = TallyUIStyles.CreateTallyLabel("Ledger:", new Point(0, 8), new Size(50, 20));
-            ledgerCombo = TallyUIStyles.CreateTallyComboBox(new Point(55, 5), new Size(150, 25));
-            
-            Label particularsLabel = TallyUIStyles.CreateTallyLabel("Particulars:", new Point(215, 8), new Size(70, 20));
-            TextBox particularsTxt = TallyUIStyles.CreateTallyTextBox(new Point(290, 5), new Size(200, 25));
-            
-            Label detailAmountLabel = TallyUIStyles.CreateTallyLabel("Amount:", new Point(500, 8), new Size(50, 20));
-            TextBox detailAmountTxt = TallyUIStyles.CreateTallyTextBox(new Point(555, 5), new Size(100, 25));
-            detailAmountTxt.Text = "0.00";
-            
-            addDetailBtn = TallyUIStyles.CreateTallyButton("➕ Add", TallyUIStyles.TallyGreen, new Point(665, 5), new Size(80, 25));
-            removeDetailBtn = TallyUIStyles.CreateTallyButton("➖ Remove", TallyUIStyles.TallyRed, new Point(20, 185), new Size(100, 25));
-            
-            detailControlPanel.Controls.AddRange(new Control[] { ledgerLabel, ledgerCombo, particularsLabel, particularsTxt, 
-                                                               detailAmountLabel, detailAmountTxt, addDetailBtn });
-            mainGroup.Controls.Add(detailControlPanel);
+            // Remove Detail Button
+            removeDetailBtn = TallyUIStyles.CreateTallyButton("➖ Remove Selected", TallyUIStyles.TallyRed, new Point(20, yPos), new Size(150, 25));
             mainGroup.Controls.Add(removeDetailBtn);
-            yPos += 50;
+            yPos += 35;
             
             // Narration
             Label narrationLabel = TallyUIStyles.CreateTallyLabel("Narration:", new Point(20, yPos), new Size(80, 20), true);
@@ -170,20 +177,21 @@ namespace BillingSoftware.Forms.Vouchers
             mainGroup.Controls.AddRange(new Control[] { narrationLabel, narrationTxt });
             
             // Calculate Button
-            calculateBtn = TallyUIStyles.CreateTallyButton("🧮 Calculate", TallyUIStyles.TallyOrange, new Point(470, yPos + 15), new Size(120, 30));
+            calculateBtn = TallyUIStyles.CreateTallyButton("🧮 Calculate Total", TallyUIStyles.TallyOrange, new Point(470, yPos + 15), new Size(150, 30));
             calculateBtn.Click += CalculateBtn_Click;
             mainGroup.Controls.Add(calculateBtn);
             
             this.Controls.Add(mainGroup);
             
             // Form Buttons
-            saveBtn = TallyUIStyles.CreateTallyButton("💾 Save Receipt", TallyUIStyles.TallyGreen, new Point(150, 580));
+            saveBtn = TallyUIStyles.CreateTallyButton("💾 Save Receipt", TallyUIStyles.TallyGreen, new Point(150, 630));
             saveBtn.Click += SaveBtn_Click;
             
-            Button cancelBtn = TallyUIStyles.CreateTallyButton("❌ Cancel", TallyUIStyles.TallyGray, new Point(280, 580));
+            Button cancelBtn = TallyUIStyles.CreateTallyButton("❌ Cancel", TallyUIStyles.TallyGray, new Point(280, 630));
             cancelBtn.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
             
-            Button printBtn = TallyUIStyles.CreateTallyButton("🖨️ Print", TallyUIStyles.TallyPurple, new Point(410, 580));
+            Button printBtn = TallyUIStyles.CreateTallyButton("🖨️ Print Preview", TallyUIStyles.TallyPurple, new Point(410, 630));
+            printBtn.Click += PrintBtn_Click;
             
             this.Controls.AddRange(new Control[] { saveBtn, cancelBtn, printBtn });
             
@@ -196,7 +204,7 @@ namespace BillingSoftware.Forms.Vouchers
         {
             try
             {
-                string sql = "SELECT COUNT(*) FROM receipt_vouchers";
+                string sql = "SELECT COUNT(*) FROM receipt_vouchers WHERE strftime('%Y-%m-%d', date) = date('now')";
                 using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
                 {
                     int count = Convert.ToInt32(cmd.ExecuteScalar()) + 1;
@@ -210,11 +218,16 @@ namespace BillingSoftware.Forms.Vouchers
         {
             try
             {
-                string sql = "SELECT name FROM ledgers WHERE type IN ('Customer', 'Sundry Debtors') AND is_active = 1 ORDER BY name";
+                string sql = @"SELECT name FROM ledgers 
+                              WHERE type IN ('Customer', 'Sundry Debtors', 'Income', 'Sales') 
+                              AND is_active = 1 
+                              ORDER BY name";
+                
                 using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
                 using (var reader = cmd.ExecuteReader())
                 {
                     ledgerCombo.Items.Clear();
+                    ledgerCombo.Items.Add("-- Select Ledger --");
                     while (reader.Read())
                     {
                         ledgerCombo.Items.Add(reader["name"].ToString());
@@ -233,7 +246,16 @@ namespace BillingSoftware.Forms.Vouchers
         private void PaymentModeCombo_SelectedIndexChanged(object sender, EventArgs e)
         {
             var chequePanel = this.Controls.Find("chequePanel", true)[0] as Panel;
-            chequePanel.Visible = (paymentModeCombo.SelectedItem.ToString() == "Cheque");
+            bool isCheque = (paymentModeCombo.SelectedItem?.ToString() == "Cheque");
+            chequePanel.Visible = isCheque;
+            
+            // Clear cheque details if not cheque mode
+            if (!isCheque)
+            {
+                chequeNoTxt.Clear();
+                bankNameTxt.Clear();
+                chequeDatePicker.Value = DateTime.Now;
+            }
         }
         
         private void AmountTxt_TextChanged(object sender, EventArgs e)
@@ -246,23 +268,34 @@ namespace BillingSoftware.Forms.Vouchers
         
         private string ConvertNumberToWords(decimal number)
         {
-            // Simple implementation - can be enhanced
-            int rupees = (int)Math.Floor(number);
-            int paise = (int)((number - rupees) * 100);
-            
-            string words = NumberToWords(rupees) + " Rupees";
-            if (paise > 0)
-                words += " and " + NumberToWords(paise) + " Paise";
-            
-            return words + " Only";
+            try
+            {
+                int rupees = (int)Math.Floor(number);
+                int paise = (int)((number - rupees) * 100);
+                
+                string words = NumberToWords(rupees) + " Rupees";
+                if (paise > 0)
+                    words += " and " + NumberToWords(paise) + " Paise";
+                
+                return words + " Only";
+            }
+            catch
+            {
+                return "Amount in words";
+            }
         }
         
         private string NumberToWords(int number)
         {
-            if (number == 0)
-                return "Zero";
+            if (number == 0) return "Zero";
             
             string words = "";
+            
+            if ((number / 10000000) > 0)
+            {
+                words += NumberToWords(number / 10000000) + " Crore ";
+                number %= 10000000;
+            }
             
             if ((number / 100000) > 0)
             {
@@ -301,20 +334,22 @@ namespace BillingSoftware.Forms.Vouchers
                 }
             }
             
-            return words;
+            return words.Trim();
         }
         
         private void AddDetail(ComboBox ledgerCombo, TextBox particularsTxt, TextBox amountTxt)
         {
-            if (ledgerCombo.SelectedItem == null)
+            if (ledgerCombo.SelectedIndex <= 0)
             {
-                MessageBox.Show("Please select a ledger!", "Validation Error");
+                MessageBox.Show("Please select a ledger!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             
             if (!decimal.TryParse(amountTxt.Text, out decimal amount) || amount <= 0)
             {
-                MessageBox.Show("Please enter valid amount!", "Validation Error");
+                MessageBox.Show("Please enter valid amount greater than 0!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             
@@ -359,6 +394,7 @@ namespace BillingSoftware.Forms.Vouchers
         {
             decimal total = receiptDetails.Sum(d => d.Amount);
             amountTxt.Text = total.ToString("N2");
+            AmountTxt_TextChanged(null, EventArgs.Empty);
         }
         
         private void CalculateBtn_Click(object sender, EventArgs e)
@@ -385,62 +421,98 @@ namespace BillingSoftware.Forms.Vouchers
                     BankName = bankNameTxt.Text,
                     Narration = narrationTxt.Text.Trim(),
                     CreatedBy = Program.CurrentUser,
-                    Details = receiptDetails
+                    Details = receiptDetails,
+                    IsPosted = true
                 };
                 
+                // Save receipt to database
                 if (dbManager.AddReceiptVoucher(receipt))
                 {
-                    // Audit log
-                    auditLogger.LogAction("CREATE", "RECEIPT", receipt.Number, 
-                                        $"Created receipt for {receipt.ReceivedFrom} - ₹{receipt.Amount:N2}", "Receipts");
-                    
-                    string message = $"Receipt saved successfully!\n\n" +
-                                   $"Receipt #: {receipt.Number}\n" +
-                                   $"Received From: {receipt.ReceivedFrom}\n" +
-                                   $"Amount: ₹{receipt.Amount:N2}\n" +
-                                   $"Payment Mode: {receipt.PaymentMode}\n\n" +
-                                   $"Do you want to print this receipt?";
-                    
-                    var result = MessageBox.Show(message, "Success", 
-                                               MessageBoxButtons.YesNo, 
-                                               MessageBoxIcon.Information);
-                    
-                    if (result == DialogResult.Yes)
+                    // Post to ledger
+                    if (ledgerManager.PostReceiptTransaction(receipt))
                     {
-                        PrintBtn_Click(null, EventArgs.Empty);
+                        // Audit log
+                        auditLogger.LogAction("CREATE", "RECEIPT", receipt.Number, 
+                                            $"Created receipt for {receipt.ReceivedFrom} - Amount: ₹{receipt.Amount:N2}", 
+                                            "Receipts", receipt.ReceivedFrom);
+                        
+                        string message = $"✅ Receipt saved successfully!\n\n" +
+                                       $"Receipt #: {receipt.Number}\n" +
+                                       $"Received From: {receipt.ReceivedFrom}\n" +
+                                       $"Amount: ₹{receipt.Amount:N2}\n" +
+                                       $"Payment Mode: {receipt.PaymentMode}\n\n" +
+                                       $"Do you want to print this receipt?";
+                        
+                        var result = MessageBox.Show(message, "Success", 
+                                                   MessageBoxButtons.YesNo, 
+                                                   MessageBoxIcon.Information);
+                        
+                        if (result == DialogResult.Yes)
+                        {
+                            PrintBtn_Click(null, EventArgs.Empty);
+                        }
+                        
+                        this.DialogResult = DialogResult.OK;
+                        this.Close();
                     }
-                    
-                    this.DialogResult = DialogResult.OK;
-                    this.Close();
+                    else
+                    {
+                        MessageBox.Show("Error posting receipt to ledger!", "Ledger Error", 
+                                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error saving receipt: {ex.Message}", "Error", 
+                MessageBox.Show($"❌ Error saving receipt: {ex.Message}", "Error", 
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         
         private bool ValidateReceipt()
         {
+            // Validate required fields
             if (string.IsNullOrWhiteSpace(receivedFromTxt.Text))
             {
-                MessageBox.Show("Please enter 'Received From'!", "Validation Error");
+                MessageBox.Show("Please enter 'Received From'!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 receivedFromTxt.Focus();
                 return false;
             }
             
             if (!decimal.TryParse(amountTxt.Text, out decimal amount) || amount <= 0)
             {
-                MessageBox.Show("Please enter valid amount!", "Validation Error");
+                MessageBox.Show("Please enter valid amount greater than 0!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 amountTxt.Focus();
                 return false;
             }
             
             if (receiptDetails.Count == 0)
             {
-                MessageBox.Show("Please add at least one receipt detail!", "Validation Error");
+                MessageBox.Show("Please add at least one receipt detail!", "Validation Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
+            }
+            
+            // Validate cheque details if payment mode is cheque
+            if (paymentModeCombo.SelectedItem.ToString() == "Cheque")
+            {
+                if (string.IsNullOrWhiteSpace(chequeNoTxt.Text))
+                {
+                    MessageBox.Show("Please enter cheque number!", "Validation Error", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    chequeNoTxt.Focus();
+                    return false;
+                }
+                
+                if (string.IsNullOrWhiteSpace(bankNameTxt.Text))
+                {
+                    MessageBox.Show("Please enter bank name!", "Validation Error", 
+                                  MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    bankNameTxt.Focus();
+                    return false;
+                }
             }
             
             return true;
@@ -455,9 +527,37 @@ namespace BillingSoftware.Forms.Vouchers
                 return;
             }
             
-            // Implement printing logic here
-            MessageBox.Show("Printing functionality will be implemented", "Print", 
-                          MessageBoxButtons.OK, MessageBoxIcon.Information);
+            try
+            {
+                var receiptVoucher = new Voucher
+                {
+                    Type = "Receipt",
+                    Number = receiptNoTxt.Text,
+                    Date = datePicker.Value,
+                    Party = receivedFromTxt.Text.Trim(),
+                    Amount = decimal.Parse(amountTxt.Text),
+                    Description = $"Receipt from {receivedFromTxt.Text.Trim()} | Mode: {paymentModeCombo.SelectedItem}"
+                };
+                
+                var voucherItems = new List<VoucherItem>();
+                foreach (var detail in receiptDetails)
+                {
+                    voucherItems.Add(new VoucherItem
+                    {
+                        ProductName = detail.Particulars,
+                        Quantity = 1,
+                        UnitPrice = detail.Amount
+                    });
+                }
+                
+                PrintHelper printHelper = new PrintHelper();
+                printHelper.PrintVoucher(receiptVoucher, voucherItems);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error printing receipt: {ex.Message}", "Print Error", 
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         
         private void InitializeComponent()

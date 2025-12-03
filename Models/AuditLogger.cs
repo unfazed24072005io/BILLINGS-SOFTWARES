@@ -39,40 +39,51 @@ namespace BillingSoftware.Modules
             }
         }
         
-        public void LogAction(string action, string entityType, string entityId, 
-                            string details, string module, string oldValues = "", 
-                            string newValues = "")
+        public void LogAction(string actionType, string entityType, string entityId, 
+                     string details, string module, string oldValues = "", 
+                     string newValues = "", string entityName = "")
+{
+    try
+    {
+        string sql = @"INSERT INTO audit_logs 
+                      (username, user_role, action_type, entity_type, entity_id, entity_name,
+                       details, old_values, new_values, ip_address, browser_info, module)
+                      VALUES (@username, @role, @actionType, @entityType, @entityId, @entityName,
+                              @details, @oldValues, @newValues, @ip, @browser, @module)";
+        
+        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
         {
-            try
-            {
-                string sql = @"INSERT INTO audit_logs 
-                              (username, user_role, action, entity_type, entity_id, 
-                               details, old_values, new_values, ip_address, module)
-                              VALUES (@username, @role, @action, @entityType, @entityId, 
-                                      @details, @oldValues, @newValues, @ip, @module)";
-                
-                using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-                {
-                    cmd.Parameters.AddWithValue("@username", Program.CurrentUser);
-                    cmd.Parameters.AddWithValue("@role", Program.UserRole);
-                    cmd.Parameters.AddWithValue("@action", action);
-                    cmd.Parameters.AddWithValue("@entityType", entityType);
-                    cmd.Parameters.AddWithValue("@entityId", entityId);
-                    cmd.Parameters.AddWithValue("@details", details);
-                    cmd.Parameters.AddWithValue("@oldValues", oldValues);
-                    cmd.Parameters.AddWithValue("@newValues", newValues);
-                    cmd.Parameters.AddWithValue("@ip", GetLocalIPAddress());
-                    cmd.Parameters.AddWithValue("@module", module);
-                    
-                    cmd.ExecuteNonQuery();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Silent fail - don't break the application if audit logging fails
-                Console.WriteLine($"Audit logging error: {ex.Message}");
-            }
+            cmd.Parameters.AddWithValue("@username", Program.CurrentUser);
+            cmd.Parameters.AddWithValue("@role", Program.UserRole);
+            cmd.Parameters.AddWithValue("@actionType", actionType);
+            cmd.Parameters.AddWithValue("@entityType", entityType);
+            cmd.Parameters.AddWithValue("@entityId", entityId);
+            cmd.Parameters.AddWithValue("@entityName", entityName);
+            cmd.Parameters.AddWithValue("@details", details);
+            cmd.Parameters.AddWithValue("@oldValues", oldValues);
+            cmd.Parameters.AddWithValue("@newValues", newValues);
+            cmd.Parameters.AddWithValue("@ip", GetLocalIPAddress());
+            cmd.Parameters.AddWithValue("@browser", GetBrowserInfo());
+            cmd.Parameters.AddWithValue("@module", module);
+            
+            cmd.ExecuteNonQuery();
         }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Audit logging error: {ex.Message}");
+    }
+}
+
+private string GetBrowserInfo()
+{
+    try
+    {
+        // For Windows Forms, we can get some basic info
+        return $"Windows Forms App | .NET {Environment.Version} | OS: {Environment.OSVersion}";
+    }
+    catch { return "Unknown"; }
+}
         
         private string GetLocalIPAddress()
         {

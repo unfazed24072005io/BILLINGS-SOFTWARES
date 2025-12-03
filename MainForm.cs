@@ -1099,56 +1099,101 @@ namespace BillingSoftware
         // ============ Helper Methods ============
 
         private void LoadLedgersData(DataGridView grid)
+{
+    try
+    {
+        // Query to get ledger balances from ledger_transactions
+        string sql = @"SELECT 
+                      l.name as 'Ledger Name',
+                      l.code as 'Code',
+                      l.type as 'Type',
+                      COALESCE(
+                          (SELECT balance FROM ledger_transactions lt 
+                           WHERE lt.ledger_name = l.name 
+                           ORDER BY lt.id DESC LIMIT 1), 0) as 'Balance',
+                      l.balance_type as 'Balance Type',
+                      CASE WHEN l.is_active = 1 THEN 'Active' ELSE 'Inactive' END as 'Status'
+                      FROM ledgers l
+                      ORDER BY l.name";
+        
+        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+        using (var adapter = new SQLiteDataAdapter(cmd))
         {
-            try
-            {
-                var ledgers = dbManager.GetAllLedgers();
-                grid.DataSource = ledgers;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error loading ledgers: {ex.Message}", "Error", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var dataTable = new DataTable();
+            adapter.Fill(dataTable);
+            grid.DataSource = dataTable;
         }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error loading ledgers: {ex.Message}", "Error", 
+                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
 
         private void LoadReceiptsData(DataGridView grid)
+{
+    try
+    {
+        string sql = @"SELECT 
+                      r.number as 'Receipt No',
+                      r.date as 'Date',
+                      r.received_from as 'Received From',
+                      r.amount as 'Amount',
+                      r.payment_mode as 'Mode',
+                      r.bank_name as 'Bank',
+                      r.cheque_no as 'Cheque No',
+                      r.created_by as 'Created By',
+                      CASE WHEN r.is_posted = 1 THEN 'Posted' ELSE 'Draft' END as 'Status'
+                      FROM receipt_vouchers r
+                      ORDER BY r.date DESC";
+        
+        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+        using (var adapter = new SQLiteDataAdapter(cmd))
         {
-            try
-            {
-                var receipts = dbManager.GetReceiptVouchers();
-                grid.DataSource = receipts;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error loading receipts: {ex.Message}", "Error", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var dataTable = new DataTable();
+            adapter.Fill(dataTable);
+            grid.DataSource = dataTable;
         }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error loading receipts: {ex.Message}", "Error", 
+                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
 
-        private void LoadPaymentsData(DataGridView grid)
+private void LoadPaymentsData(DataGridView grid)
+{
+    try
+    {
+        string sql = @"SELECT 
+                      p.number as 'Payment No',
+                      p.date as 'Date',
+                      p.paid_to as 'Paid To',
+                      p.amount as 'Amount',
+                      p.payment_mode as 'Mode',
+                      p.bank_name as 'Bank',
+                      p.cheque_no as 'Cheque No',
+                      p.created_by as 'Created By',
+                      CASE WHEN p.is_posted = 1 THEN 'Posted' ELSE 'Draft' END as 'Status'
+                      FROM payment_vouchers p
+                      ORDER BY p.date DESC";
+        
+        using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+        using (var adapter = new SQLiteDataAdapter(cmd))
         {
-            try
-            {
-                string sql = @"SELECT number, date, paid_to, amount, payment_mode, 
-                              CASE WHEN is_posted = 1 THEN 'Posted' ELSE 'Draft' END as status
-                              FROM payment_vouchers 
-                              ORDER BY date DESC";
-                
-                using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
-                using (var adapter = new SQLiteDataAdapter(cmd))
-                {
-                    var dataTable = new DataTable();
-                    adapter.Fill(dataTable);
-                    grid.DataSource = dataTable;
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error loading payments: {ex.Message}", "Error", 
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var dataTable = new DataTable();
+            adapter.Fill(dataTable);
+            grid.DataSource = dataTable;
         }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error loading payments: {ex.Message}", "Error", 
+                      MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
 
         private void LoadAuditLogs(DataGridView grid, DateTime fromDate, DateTime toDate, string username = "")
         {
@@ -1430,8 +1475,20 @@ namespace BillingSoftware
     try
     {
         var dataTable = new DataTable();
-        // ADD created_by to SELECT
-        string sql = "SELECT number, type, date, party, description, created_by FROM vouchers WHERE status = 'Active' ORDER BY date DESC";
+        // Organized query with all important fields
+        string sql = @"SELECT 
+                      number as 'Voucher No',
+                      type as 'Type',
+                      date as 'Date',
+                      party as 'Party',
+                      amount as 'Amount',
+                      description as 'Description',
+                      created_by as 'Created By',
+                      CASE WHEN status = 'Active' THEN '✅ Active' 
+                           WHEN status = 'Cancelled' THEN '❌ Cancelled'
+                           ELSE status END as 'Status'
+                      FROM vouchers 
+                      ORDER BY date DESC, number DESC";
         
         using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
         using (var adapter = new SQLiteDataAdapter(cmd))
@@ -1440,6 +1497,21 @@ namespace BillingSoftware
         }
         
         vouchersGridView.DataSource = dataTable;
+        
+        // Format columns
+        if (vouchersGridView.Columns.Contains("Amount"))
+        {
+            vouchersGridView.Columns["Amount"].DefaultCellStyle.Format = "N2";
+            vouchersGridView.Columns["Amount"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+        }
+        
+        if (vouchersGridView.Columns.Contains("Date"))
+        {
+            vouchersGridView.Columns["Date"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        }
+        
+        // Auto-size columns for better readability
+        vouchersGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
     }
     catch (Exception ex)
     {

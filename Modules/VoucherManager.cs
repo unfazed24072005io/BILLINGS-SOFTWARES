@@ -10,10 +10,12 @@ namespace BillingSoftware.Modules
     public class VoucherManager
     {
         private DatabaseManager dbManager;
+        private LedgerManager ledgerManager;
 
         public VoucherManager()
         {
             dbManager = new DatabaseManager();
+            ledgerManager = new LedgerManager();
         }
 
         // Voucher Operations with items
@@ -24,8 +26,8 @@ namespace BillingSoftware.Modules
                 try
                 {
                     // Insert main voucher
-                    string voucherSql = @"INSERT INTO vouchers (type, number, date, party, amount, description, status, reference_voucher)
-                                      VALUES (@type, @number, @date, @party, @amount, @description, @status, @reference)";
+                    string voucherSql = @"INSERT INTO vouchers (type, number, date, party, amount, description, status, created_by)
+                                      VALUES (@type, @number, @date, @party, @amount, @description, @status, @createdBy)";
 
                     using (var cmd = new SQLiteCommand(voucherSql, dbManager.GetConnection(), transaction))
                     {
@@ -36,7 +38,7 @@ namespace BillingSoftware.Modules
                         cmd.Parameters.AddWithValue("@amount", voucher.Amount);
                         cmd.Parameters.AddWithValue("@description", voucher.Description);
                         cmd.Parameters.AddWithValue("@status", voucher.Status);
-                        cmd.Parameters.AddWithValue("@reference", voucher.ReferenceVoucher);
+                        cmd.Parameters.AddWithValue("@createdBy", Program.CurrentUser);
 
                         if (cmd.ExecuteNonQuery() == 0)
                             throw new Exception("Failed to insert voucher");
@@ -71,7 +73,32 @@ namespace BillingSoftware.Modules
                         }
                     }
 
+                    // Post to ledger based on voucher type
+                    switch (voucher.Type)
+                    {
+                        case "Sales":
+                            if (!ledgerManager.PostSalesTransaction(voucher))
+                                throw new Exception("Failed to post sales to ledger");
+                            break;
+                            
+                        case "Stock Purchase":
+                            if (!ledgerManager.PostPurchaseTransaction(voucher))
+                                throw new Exception("Failed to post purchase to ledger");
+                            break;
+                            
+                        case "Estimate":
+                            // Estimates don't post to ledger
+                            break;
+                    }
+
                     transaction.Commit();
+                    
+                    // Log audit
+                    AuditLogger auditLogger = new AuditLogger();
+                    auditLogger.LogAction("CREATE", "VOUCHER", voucher.Number, 
+                                        $"Created {voucher.Type} voucher: {voucher.Number} - Amount: ₹{voucher.Amount:N2}", 
+                                        voucher.Type, voucher.Party);
+                    
                     return true;
                 }
                 catch (Exception ex)
@@ -109,7 +136,7 @@ namespace BillingSoftware.Modules
                         Amount = Convert.ToDecimal(reader["amount"]),
                         Description = reader["description"].ToString(),
                         Status = reader["status"].ToString(),
-                        ReferenceVoucher = reader["reference_voucher"].ToString()
+                        CreatedBy = reader["created_by"].ToString()
                     };
 
                     // Parse items
@@ -146,7 +173,14 @@ namespace BillingSoftware.Modules
 
         public List<Voucher> GetSalesVouchersForReference()
         {
-            string sql = "SELECT number, date, party, amount FROM vouchers WHERE type = 'Sales' AND status = 'Active' ORDER BY date DESC";
+            string sql = @"SELECT v.*, 
+                          GROUP_CONCAT(vi.product_name || '|' || vi.quantity || '|' || vi.unit_price, ';') as items
+                          FROM vouchers v
+                          LEFT JOIN voucher_items vi ON v.number = vi.voucher_number
+                          WHERE v.type = 'Sales' AND v.status = 'Active'
+                          GROUP BY v.id
+                          ORDER BY v.date DESC";
+            
             var vouchers = new List<Voucher>();
             
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
@@ -154,13 +188,36 @@ namespace BillingSoftware.Modules
             {
                 while (reader.Read())
                 {
-                    vouchers.Add(new Voucher
+                    var voucher = new Voucher
                     {
                         Number = reader["number"].ToString(),
                         Date = DateTime.Parse(reader["date"].ToString()),
                         Party = reader["party"].ToString(),
-                        Amount = Convert.ToDecimal(reader["amount"])
-                    });
+                        Amount = Convert.ToDecimal(reader["amount"]),
+                        Description = reader["description"].ToString()
+                    };
+                    
+                    // Parse items
+                    var itemsData = reader["items"].ToString();
+                    if (!string.IsNullOrEmpty(itemsData))
+                    {
+                        var items = itemsData.Split(';');
+                        foreach (var item in items)
+                        {
+                            var parts = item.Split('|');
+                            if (parts.Length >= 3)
+                            {
+                                voucher.Items.Add(new VoucherItem
+                                {
+                                    ProductName = parts[0],
+                                    Quantity = decimal.Parse(parts[1]),
+                                    UnitPrice = decimal.Parse(parts[2])
+                                });
+                            }
+                        }
+                    }
+                    
+                    vouchers.Add(voucher);
                 }
             }
             return vouchers;
@@ -168,7 +225,14 @@ namespace BillingSoftware.Modules
 
         public List<Voucher> GetPurchaseVouchersForReference()
         {
-            string sql = "SELECT number, date, party, amount FROM vouchers WHERE type = 'Stock Purchase' AND status = 'Active' ORDER BY date DESC";
+            string sql = @"SELECT v.*, 
+                          GROUP_CONCAT(vi.product_name || '|' || vi.quantity || '|' || vi.unit_price, ';') as items
+                          FROM vouchers v
+                          LEFT JOIN voucher_items vi ON v.number = vi.voucher_number
+                          WHERE v.type = 'Stock Purchase' AND v.status = 'Active'
+                          GROUP BY v.id
+                          ORDER BY v.date DESC";
+            
             var vouchers = new List<Voucher>();
             
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
@@ -176,13 +240,36 @@ namespace BillingSoftware.Modules
             {
                 while (reader.Read())
                 {
-                    vouchers.Add(new Voucher
+                    var voucher = new Voucher
                     {
                         Number = reader["number"].ToString(),
                         Date = DateTime.Parse(reader["date"].ToString()),
                         Party = reader["party"].ToString(),
-                        Amount = Convert.ToDecimal(reader["amount"])
-                    });
+                        Amount = Convert.ToDecimal(reader["amount"]),
+                        Description = reader["description"].ToString()
+                    };
+                    
+                    // Parse items
+                    var itemsData = reader["items"].ToString();
+                    if (!string.IsNullOrEmpty(itemsData))
+                    {
+                        var items = itemsData.Split(';');
+                        foreach (var item in items)
+                        {
+                            var parts = item.Split('|');
+                            if (parts.Length >= 3)
+                            {
+                                voucher.Items.Add(new VoucherItem
+                                {
+                                    ProductName = parts[0],
+                                    Quantity = decimal.Parse(parts[1]),
+                                    UnitPrice = decimal.Parse(parts[2])
+                                });
+                            }
+                        }
+                    }
+                    
+                    vouchers.Add(voucher);
                 }
             }
             return vouchers;
@@ -211,7 +298,7 @@ namespace BillingSoftware.Modules
         {
             string prefix = GetVoucherPrefix(type);
             int count = GetVoucherCountByType(type) + 1;
-            return $"{prefix}-{count.ToString().PadLeft(3, '0')}";
+            return $"{prefix}-{DateTime.Now:yyyyMMdd}-{count.ToString("000")}";
         }
 
         private string GetVoucherPrefix(string type)
@@ -230,7 +317,7 @@ namespace BillingSoftware.Modules
 
         private int GetVoucherCountByType(string type)
         {
-            string sql = "SELECT COUNT(*) FROM vouchers WHERE type = @type";
+            string sql = "SELECT COUNT(*) FROM vouchers WHERE type = @type AND strftime('%Y-%m-%d', date) = date('now')";
             using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
             {
                 cmd.Parameters.AddWithValue("@type", type);
@@ -273,6 +360,72 @@ namespace BillingSoftware.Modules
                 Console.WriteLine($"Error updating product stock: {ex.Message}");
                 throw;
             }
+        }
+        
+        // Get voucher by number with all details
+        public Voucher GetVoucherByNumber(string voucherNumber)
+        {
+            try
+            {
+                string sql = @"SELECT v.*, 
+                              GROUP_CONCAT(vi.product_name || '|' || vi.quantity || '|' || vi.unit_price, ';') as items
+                              FROM vouchers v
+                              LEFT JOIN voucher_items vi ON v.number = vi.voucher_number
+                              WHERE v.number = @number
+                              GROUP BY v.id";
+                
+                using (var cmd = new SQLiteCommand(sql, dbManager.GetConnection()))
+                {
+                    cmd.Parameters.AddWithValue("@number", voucherNumber);
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            var voucher = new Voucher
+                            {
+                                Id = Convert.ToInt32(reader["id"]),
+                                Type = reader["type"].ToString(),
+                                Number = reader["number"].ToString(),
+                                Date = DateTime.Parse(reader["date"].ToString()),
+                                Party = reader["party"].ToString(),
+                                Amount = Convert.ToDecimal(reader["amount"]),
+                                Description = reader["description"].ToString(),
+                                Status = reader["status"].ToString(),
+                                CreatedBy = reader["created_by"].ToString()
+                            };
+                            
+                            // Parse items
+                            var itemsData = reader["items"].ToString();
+                            if (!string.IsNullOrEmpty(itemsData))
+                            {
+                                var items = itemsData.Split(';');
+                                foreach (var item in items)
+                                {
+                                    var parts = item.Split('|');
+                                    if (parts.Length >= 3)
+                                    {
+                                        voucher.Items.Add(new VoucherItem
+                                        {
+                                            ProductName = parts[0],
+                                            Quantity = decimal.Parse(parts[1]),
+                                            UnitPrice = decimal.Parse(parts[2])
+                                        });
+                                    }
+                                }
+                            }
+                            
+                            return voucher;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting voucher: {ex.Message}");
+            }
+            
+            return null;
         }
     }
 }
